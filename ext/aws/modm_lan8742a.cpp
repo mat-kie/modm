@@ -10,7 +10,6 @@
 
 #include <modm/platform.hpp>
 #include <modm/driver/ethernet/LAN8742a.hpp>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -24,8 +23,8 @@
 
 #include <cstring>
 
-using EMAC = modm::platform::Eth<modm::LAN8742a>;
-
+using EMAC = modm::platform::Eth;
+using PHY = modm::LAN8742a<EMAC>;
 namespace modm
 {
 
@@ -376,8 +375,8 @@ struct ethernet
 		using modm::platform::eth;
 
 		if (force or lastPhyLinkStatus == eth::LinkStatus::Up) {
-			bool autoNegotiationFailed = not EMAC::phyStartAutoNegotiation();
-			EMAC::configureMac(autoNegotiationFailed);
+			ANResult negotiated =  PHY::startAutoNegotiation();
+			EMAC::configureMac(negotiated);
 			EMAC::start();
 		} else {
 			EMAC::stop();
@@ -397,7 +396,7 @@ struct ethernet
 
 		bool checkNeeded { false };
 		if (xTaskCheckForTimeOut(&phyLinkStatusTimer, &phyLinkStatusRemaining)) {
-			eth::LinkStatus phyLinkStatus = EMAC::phyReadLinkStatus();
+			eth::LinkStatus phyLinkStatus = PHY::readLinkStatus();
 			if (lastPhyLinkStatus != phyLinkStatus) {
 				lastPhyLinkStatus = phyLinkStatus;
 				if (phyLinkStatus == eth::LinkStatus::Down) {

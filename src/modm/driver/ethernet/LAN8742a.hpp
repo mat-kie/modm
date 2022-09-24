@@ -1,10 +1,10 @@
 #ifndef LAN8742A_HPP
 #define LAN8742A_HPP
-#include <modm/platform/eth/eth.hpp>
-
+//#include <modm/platform/eth/PAL.hpp>
+#include <modm/platform/eth/stm32/PAL.hpp>
 
 namespace modm{
-
+	template<class ETH>
     class LAN8742a: PAL<LAN8742a>, PHY{
 		private:
 			static bool linkStatus;

@@ -16,9 +16,9 @@
 namespace modm::platform {
 
 
-template <class PHY>
+
 void
-Eth<PHY>::start()
+Eth::start()
 {
 	// transmission enable
 	uint32_t tmp = ETH->MACCR | ETH_MACCR_TE;
@@ -41,9 +41,9 @@ Eth<PHY>::start()
 	writeDMAOMR(tmp);
 }
 
-template <class PHY>
+
 void
-Eth<PHY>::stop()
+Eth::stop()
 {
 	// DMA transmission disable
 	uint32_t tmp = ETH->DMAOMR & ~ETH_DMAOMR_ST;
@@ -66,9 +66,9 @@ Eth<PHY>::stop()
 	writeMACCR(tmp);
 }
 
-template <class PHY>
+
 void
-Eth<PHY>::configureMacAddresses()
+Eth::configureMacAddresses()
 {
 	static constexpr uint32_t ETH_MAC_ADDR_HBASE { ETH_MAC_BASE + 0x40 };  /* Ethernet MAC address high offset */
 	static constexpr uint32_t ETH_MAC_ADDR_LBASE { ETH_MAC_BASE + 0x44 };  /* Ethernet MAC address low offset */
@@ -87,20 +87,20 @@ Eth<PHY>::configureMacAddresses()
 	}
 }
 
-template <class PHY>
+
 bool
-Eth<PHY>::readPhyRegister(PHY::Register reg, uint32_t &value)
+Eth::readPhyRegister(uint32_t sid, uint32_t reg, uint32_t &value)
 {
 	// get only CR bits from MACMIIAR
 	uint32_t tmp = ETH->MACMIIAR & ETH_MACMIIAR_CR_Msk;
-	tmp |= (PHY::Address << 11) & ETH_MACMIIAR_PA;
+	tmp |= (sid << 11) & ETH_MACMIIAR_PA;
 	tmp |= (reg << 6) & ETH_MACMIIAR_MR;
 	tmp &= ~ETH_MACMIIAR_MW;
 	tmp |= ETH_MACMIIAR_MB;
 
 	ETH->MACMIIAR = tmp;
 
-	int timeout = PHY::ReadTimeout;
+	int timeout = 0xffff; /// TODO: FIXME bad style
 	while (timeout-- > 0) {
 		if ((ETH->MACMIIAR & ETH_MACMIIAR_MB) == 0) {
 			// busy flag cleared, read data
@@ -112,13 +112,13 @@ Eth<PHY>::readPhyRegister(PHY::Register reg, uint32_t &value)
 	return false;
 }
 
-template <class PHY>
+
 bool
-Eth<PHY>::writePhyRegister(PHY::Register reg, uint32_t value)
+Eth::writePhyRegister(uint32_t sid, uint32_t reg, uint32_t value)
 {
 	// get only CR bits from MACMIIAR
 	uint32_t tmp = ETH->MACMIIAR & ETH_MACMIIAR_CR_Msk;
-	tmp |= (PHY::Address << 11) & ETH_MACMIIAR_PA;
+	tmp |= (sid << 11) & ETH_MACMIIAR_PA;
 	tmp |= (reg << 6) & ETH_MACMIIAR_MR;
 	tmp |= ETH_MACMIIAR_MW;
 	tmp |= ETH_MACMIIAR_MB;
@@ -126,7 +126,7 @@ Eth<PHY>::writePhyRegister(PHY::Register reg, uint32_t value)
 	ETH->MACMIIDR = value;
 	ETH->MACMIIAR = tmp;
 
-	int timeout = PHY::WriteTimeout;
+	int timeout = 0xffff; /// TODO: FIXME bad style
 	while (timeout-- > 0) {
 		if ((ETH->MACMIIAR & ETH_MACMIIAR_MB) == 0)
 			return true;

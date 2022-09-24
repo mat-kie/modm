@@ -16,7 +16,7 @@
 #include <modm/architecture/interface.hpp>
 #include <modm/math/utils/bit_constants.hpp>
 #include "../device.hpp"
-
+#include <modm/platform/eth/stm32/PAL.hpp>
 #include <array>
 #include <cstring>
 

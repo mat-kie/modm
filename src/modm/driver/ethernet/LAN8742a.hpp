@@ -1,25 +1,27 @@
-#include <modm/platform/eth/stm32/eth.hpp>
+#ifndef LAN8742A_HPP
+#define LAN8742A_HPP
+#include <modm/platform/eth/eth.hpp>
 
 
 namespace modm{
 
     class LAN8742a: PAL<LAN8742a>, PHY{
 		private:
-			static bool linkStatus{false};
+			static bool linkStatus;
         public:
+			static constexpr uint32_t Address = 0x00;
             static bool initialize(){
                 // Initialize PHY
-		        uint32_t phy_register(0);
 		        /// Step 1.: reset phy. this is mandatory for config (see 802.3-22.2.4)
-		        phy_register |= PHY::CR::RESET;
-				if (!writePhyRegister(PHY::Register::CR, phy_register)) {
+		        uint32_t phy_register = uint32_t(PHY::CR::RESET);
+				if (!platform::Eth<LAN8742a>::writePhyRegister(PHY::Register::CR, phy_register)) {
 					return false;
 				}
 				// wait for reset done
 				modm::delay_us(255);
 				uint16_t timeout = 0'500;
 				do {
-					(void) readPhyRegister(PHY::Register::CR, phy_register);
+					(void) platform::Eth<LAN8742a>::readPhyRegister(PHY::Register::CR, phy_register);
 					if ((phy_register & PHY::CR::RESET) == 0)
 						break;
 					modm::delay_ms(1);
@@ -36,23 +38,23 @@ namespace modm{
 						| 0x20 // 10
 						| 0x01 // 802.3
 						;
-				(void) writePhyRegister(PHY::Register::ANA, phy_register);
+				(void) platform::Eth<LAN8742a>::writePhyRegister(PHY::Register::ANA, phy_register);
 
     		};
 
             static ANResult startAutoNegotiation(){
 				uint32_t phy_register { 0 };
 				// enable auto-negotiation
-				(void) readPhyRegister(PHY::Register::CR, phy_register);
+				(void) platform::Eth<LAN8742a>::readPhyRegister(PHY::Register::CR, phy_register);
 				phy_register |= PHY::CR::RAN;
-				if (!writePhyRegister(PHY::Register::CR, phy_register))
+				if (!platform::Eth<LAN8742a>::writePhyRegister(PHY::Register::CR, phy_register))
 				{
 					return ANResult();
 				}
 				// wait for auto-negotiation complete (5s)
 				uint16_t timeout = 5'000;
 				do {
-					(void) readPhyRegister(PHY::Register::SR, phy_register);
+					(void) platform::Eth<LAN8742a>::readPhyRegister(PHY::Register::SR, phy_register);
 					if ((phy_register & PHY::SR::AN_COMP) == PHY::SR::AN_COMP)
 					{
 						break;
@@ -64,7 +66,7 @@ namespace modm{
 					return ANResult();
 				}
 				// read auto-negotiation result
-				if (!readPhyRegister(PHY::Register::SR, phy_register))
+				if (!platform::Eth<LAN8742a>::readPhyRegister(PHY::Register::SR, phy_register))
 				{
 					return ANResultU();
 				}
@@ -78,7 +80,7 @@ namespace modm{
            
            static bool readLinkStatus(){
                 uint32_t phy_register { 0 };
-				(void) readPhyRegister(PHY::Register::SR, phy_register);
+				(void) platform::Eth<LAN8742a>::readPhyRegister(PHY::Register::SR, phy_register);
 				if ((phy_register & PHY::SR::LINK_STATUS) == PHY::SR::LINK_STATUS)
 					linkStatus = true;
 				else
@@ -93,3 +95,4 @@ namespace modm{
     };
 
 };
+#endif

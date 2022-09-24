@@ -11,8 +11,9 @@
  * @author Mattis Kieffer
  * 
  */
+#ifndef MODM_ETH_PAL_HPP
+#define MODM_ETH_PAL_HPP
 #include <modm/architecture/interface/register.hpp>
-
 namespace modm{
     /**
      * @brief Standard PHY Management register description.
@@ -20,7 +21,7 @@ namespace modm{
      * 
      */
     struct PHY{
-        enum class Register : uint16_t
+        enum class Register : uint8_t
         {
             CR = 0,         /// Control Register
             SR = 1,         /// Status Register
@@ -39,6 +40,7 @@ namespace modm{
             MMDAADR = 14,   /// MMD Access Address Data Register
             ESR = 15        /// Extended Status 
         };
+        
 
         enum class CR : uint16_t
         {
@@ -54,6 +56,7 @@ namespace modm{
 			LOOPBACK = Bit14,
 			RESET = Bit15
         };
+        MODM_FLAGS16(CR);
 
         enum class SR : uint16_t
         {
@@ -68,12 +71,13 @@ namespace modm{
             EXT_STAT = Bit8,        /// Extended status information in Register 15
             SPD100T2HD = Bit9,      /// PHY able to perform half duplex 100BASE-T2
             SPD100T2FD = Bit10,     /// PHY able to perform full duplex 100BASE-T2
-            SPD10FD = Bit11,        /// PHY able to operate at 10 Mb/s in half duplex mode
+            SPD10HD = Bit11,        /// PHY able to operate at 10 Mb/s in half duplex mode
             SPD10FD = Bit12,        /// PHY able to operate at 10 Mb/s in full duplex mode
             SPD100XHD = Bit13,      /// PHY able to perform half duplex 100BASE-X
             SPD100XFD = Bit14,      /// PHY able to perform full duplex 100BASE-X
             SPD100T4 = Bit15       /// 100BASE-T4 capable
         };
+        MODM_FLAGS16(SR);
     };
 
     struct ANResult{
@@ -91,6 +95,10 @@ namespace modm{
     template<class T>
     struct PAL
     {
+
+        static constexpr uint32_t Address = T::Address;
+        static constexpr int ReadTimeout = 0xffff;
+	    static constexpr int WriteTimeout = 0xffff;
         /**
          * @brief initialize PHY (reset phy and config its regs).
          * 
@@ -119,3 +127,4 @@ namespace modm{
     };
 
 };
+#endif

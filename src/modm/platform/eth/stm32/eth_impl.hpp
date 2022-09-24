@@ -89,7 +89,7 @@ Eth<PHY>::configureMacAddresses()
 
 template <class PHY>
 bool
-Eth<PHY>::readPhyRegister(uint16_t reg, uint32_t &value)
+Eth<PHY>::readPhyRegister(PHY::Register reg, uint32_t &value)
 {
 	// get only CR bits from MACMIIAR
 	uint32_t tmp = ETH->MACMIIAR & ETH_MACMIIAR_CR_Msk;
@@ -114,7 +114,7 @@ Eth<PHY>::readPhyRegister(uint16_t reg, uint32_t &value)
 
 template <class PHY>
 bool
-Eth<PHY>::writePhyRegister(uint16_t reg, uint32_t value)
+Eth<PHY>::writePhyRegister(PHY::Register reg, uint32_t value)
 {
 	// get only CR bits from MACMIIAR
 	uint32_t tmp = ETH->MACMIIAR & ETH_MACMIIAR_CR_Msk;

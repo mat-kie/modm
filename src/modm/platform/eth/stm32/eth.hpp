@@ -16,7 +16,7 @@
 #include <modm/architecture/interface.hpp>
 #include <modm/math/utils/bit_constants.hpp>
 #include "../device.hpp"
-#include <modm/platform/eth/stm32/PAL.hpp>
+#include <modm/platform/eth/PAL.hpp>
 #include <array>
 #include <cstring>
 
@@ -425,9 +425,10 @@ public:
 		ETH->MACMIIAR = csr_clock_divider;
 
 		// Initialize PHY
-		uint32_t phy_register { 0 };
+		PHY::initialize();
+		/*uint32_t phy_register { 0 };
 
-		/* Reset */
+		// Reset
 		(void) readPhyRegister(PHY::Register::BCR, phy_register);
 		phy_register |= PHY::Reset;
 		if (not writePhyRegister(PHY::Register::BCR, phy_register)) {
@@ -450,7 +451,7 @@ public:
 			linkStatus = LinkStatus::Down;
 			return false;
 		}
-
+		
 		// FIXME: Delegate these values to the PHY
 		// configure auto negotiation
 		phy_register = 0x100 // 100 FD
@@ -460,7 +461,7 @@ public:
 				| 0x01 // 802.3
 				;
 		(void) writePhyRegister(PHY::Register::AN, phy_register);
-
+		*/
 		configureMac(true);
 		configureDma();
 
@@ -579,7 +580,14 @@ public:
 	static bool
 	phyStartAutoNegotiation()
 	{
-		uint32_t phy_register { 0 };
+		ANResult result = PHY::startAutonegotiation();
+		if (result.speed == 10 || result.speed == 100){
+			duplexMode = result.isFullDuplex ? DuplexMode::Full : DuplexMode::Half;
+			speed = result.speed == 100 ? Speed::Speed100M : Speed::Speed10M;
+			return true;
+		}
+		return false;
+		/*uint32_t phy_register { 0 };
 
 		// enable auto-negotiation
 		(void) readPhyRegister(PHY::Register::BCR, phy_register);
@@ -612,12 +620,15 @@ public:
 		else
 			speed = Speed::Speed100M;
 
-		return true;
+		return true;*/
 	}
 
 	static LinkStatus
 	phyReadLinkStatus()
 	{
+		linkStatus = PHY::readLinkStatus() ? LinkStatus::Up : LinkStatus::Down;
+		return linkStatus;
+		/*
 		uint32_t phy_register { 0 };
 
 		(void) readPhyRegister(PHY::Register::BSR, phy_register);
@@ -627,6 +638,7 @@ public:
 			linkStatus = LinkStatus::Down;
 
 		return linkStatus;
+		*/
 	}
 	static LinkStatus
 	getLinkStatus() {
@@ -678,9 +690,9 @@ private:
 	}
 
 	static bool
-	writePhyRegister(uint16_t reg, uint32_t value);
+	writePhyRegister(PAL::PHY::Register reg, uint32_t value);
 	static bool
-	readPhyRegister(uint16_t reg, uint32_t &value);
+	readPhyRegister(PAL::PHY::Register reg, uint32_t &value);
 
 	static inline DuplexMode duplexMode = eth::DuplexMode::Full;
 	static inline Speed speed = eth::Speed::Speed100M;

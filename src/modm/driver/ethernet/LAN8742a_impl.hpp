@@ -1,14 +1,11 @@
-/*
- * Copyright (c) 2020, Mike Wolfram
- *
- * This file is part of the modm project.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
-// ----------------------------------------------------------------------------
 
+/**
+ * @brief implementation of the template specific methods.
+ * 
+ */
+#ifndef LAN8742A_HPP
+# error "do not include directly, includ eLAN8742a.hpp"
+#endif
 namespace modm
 {
 template<class MIIMI>

@@ -4,7 +4,7 @@
  * 
  */
 #ifndef LAN8742A_HPP
-# error "do not include directly, includ eLAN8742a.hpp"
+# error "do not include directly, include LAN8742a.hpp"
 #endif
 namespace modm
 {

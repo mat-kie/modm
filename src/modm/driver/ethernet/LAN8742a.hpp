@@ -11,6 +11,7 @@
 #ifndef LAN8742A_HPP
 #define LAN8742A_HPP
 #include <modm/platform/eth/eth.hpp>
+#include <modm/platform/eth/PHYBase.hpp>
 
 namespace modm
 {
@@ -20,33 +21,11 @@ namespace modm
  * @tparam MIIMI static class containing the read and write functions for the SMI / MIIMI.
  */
 template<class MIIMI>
-class LAN8742a : platform::PHY
+class LAN8742a : platform::PHYBase
 {
-	/**
-	 * @brief Autonegotiation advertisement register.
-	 * 
-	 */
-	enum class ANA : uint16_t
-	{
-		SEL0 = Bit0,			/// Mode Selector Bit 0 (if set:= IEEE802.3)
-		SEL1 = Bit1,			/// Mode Selector Bit 1 (reserved)
-		SEL2 = Bit2,			/// Mode Selector Bit 2 (reserved)
-		SEL3 = Bit3,			/// Mode Selector Bit 3 (reserved)
-		S10BASE_T = Bit5,		/// Advertise 10BASE-T capability (Half Duplex)
-		S10BASE_T_FD = Bit6,	/// Advertise 10BASE-T capability (Full Duplex)
-		S100BASE_TX = Bit7,		/// Advertise 100BASE-T capability (Half Duplex)
-		S100BASE_TX_FD = Bit8,	/// Advertise 100BASE-T capability (Full Duplex)
-		// S100BASE_T4=Bit9,	/// 100BASE-T4 not supported by this chip
-		PS1 = Bit10,			/// Advertise Symmetric pause capability
-		PS2 = Bit11,			/// Advertise Asymmetric pause capability
-		RF2 = Bit13,			/// Remote Fault detection
-		ACK = Bit14,			/// Acknowlege
-		NP = Bit15				/// Next page supported
-	};
-	MODM_FLAGS16(ANA)
+
 private:
 	static inline platform::eth::LinkStatus linkStatus;		/// the phys last linkstatus
-
 public:
 
 	/**
@@ -59,31 +38,29 @@ public:
 	initialize()
 	{ 
 		/// Step 1: Reset PHY. Writing registers might not be allowed prior to a Reset.
-		volatile uint32_t phy_register{0};
-		(void)MIIMI::readPhyRegister(0, Register::CR, phy_register);
-		CR_t phycr = static_cast<CR_t>(phy_register);
-		phycr.set(CR::RESET);
-		if (not MIIMI::writePhyRegister(0, Register::CR, phycr.value)) { return false; }
-
+		ControlRegister_t phy_cr;
+		(void)MIIMI::readPhyRegister(0, Register::CR, phy_cr);
+		phy_cr.set(ControlRegister::Reset);
+		if (not MIIMI::writePhyRegister(0, Register::CR, phy_cr)) { return false; }
 		// wait for reset done
 		modm::delay_us(255);
 		uint32_t timeout = 1'000;
 		/// Step 2: Wait for the Reset bit to clear. indicating successful reset.
 		do {
-			phy_register = 0;
-			if (!MIIMI::readPhyRegister(0, Register::CR, phy_register)) break;
-			phycr = static_cast<CR_t>(phy_register);
-			if (!(phycr & CR::RESET)) { break; }
+			if (!MIIMI::readPhyRegister(0, Register::CR, phy_cr)) break;
+			if (!(phy_cr & ControlRegister::Reset)) { break; }
 			modm::delay_ms(1);
 		} while (timeout-- > 0);
 		if (timeout <= 0) { return false; }
 		// Configure the Autonegotiation advertisement register.
-		ANA_t phyana =
-			ANA::SEL0 | ANA::S10BASE_T | ANA::S10BASE_T_FD | ANA::S100BASE_TX | ANA::S100BASE_TX_FD;
-		if (!MIIMI::writePhyRegister(0, Register::ANA, phyana.value)){ return false; }
+		ANAbilityMII_t phy_an_adv = Selector_t(Selector::IEEE802_3)
+									| ANAbilityMII::TECH_10BASE_T
+									| ANAbilityMII::TECH_10BASE_T_FD
+									| ANAbilityMII::TECH_100BASE_TX
+									| ANAbilityMII::TECH_100BASE_TX_FD;
+		if (!MIIMI::writePhyRegister(0, Register::AN_ADV, phy_an_adv)){ return false; }
 		// Step 3: configure the phy for 100M Full duplex for a start and enable Autonegotiation
-		phycr = CR::SPD_SEL_LSB | CR::AN_EN | CR::DUP_MOD;
-		return  MIIMI::writePhyRegister(0, Register::CR, phycr.value);
+		return  true;//MIIMI::writePhyRegister(0, Register::CR, ControlRegister_t(ControlRegister::AN_Enable | ControlRegister::DuplexMode | ControlRegister::SpeedSelection_LSB));
 
 	};
 
@@ -96,34 +73,31 @@ public:
 	static platform::ANResult
 	startAutoNegotiation()
 	{
-		uint32_t phy_register{0};
+		ControlRegister_t phy_cr;
 		// if Autonegotiation fails, assume 100M Full duplex
 		platform::ANResult cfg{.successful = false,
 							   .mode = platform::eth::DuplexMode::Full,
 							   .speed = platform::eth::Speed::Speed100M};
 		// enable auto-negotiation
-		(void)MIIMI::readPhyRegister(0, Register::CR, phy_register);
-		CR_t phycr = static_cast<CR_t>(phy_register);
-		phycr.set(CR::RAN);
-		if (!MIIMI::writePhyRegister(0, Register::CR, phycr.value)) { return cfg; }
+		(void)MIIMI::readPhyRegister(0, Register::CR, phy_cr);
+		phy_cr.set(ControlRegister::AN_Restart);
+		if (!MIIMI::writePhyRegister(0, Register::CR, phy_cr)) { return cfg; }
 		// wait for auto-negotiation complete (5s)
 		uint16_t timeout = 5'000;
+		StatusRegister_t phy_sr;
 		do {
-			(void)MIIMI::readPhyRegister(0, Register::SR, phy_register);
-			if (static_cast<SR_t>(phy_register) & SR::AN_COMP) { break; }
+			
+			(void)MIIMI::readPhyRegister(0, Register::SR, phy_sr);
+			if (phy_sr & StatusRegister::AN_Complete) { break; }
 			modm::delay_ms(1);
 		} while (timeout-- > 0);
 		if (timeout == 0) { return cfg; }
-		// read auto-negotiation result
-		if (!MIIMI::readPhyRegister(0, PHY::Register::SR, phy_register)) { return cfg; }
-
-		if (!(static_cast<SR_t>(phy_register) & (SR::SPD100T2FD | SR::SPD100XFD | SR::SPD10FD)))
+		// convert to ANResult
+		if (!(phy_sr & DuplexStatus_t(DuplexStatus::FullDuplex)))
 		{
 			cfg.mode = platform::eth::DuplexMode::Half;
 		}
-		if (!(static_cast<SR_t>(phy_register) &
-			  (PHY::SR::SPD100T4 | PHY::SR::SPD100T2FD | PHY::SR::SPD100T2HD | PHY::SR::SPD100T4 |
-			   PHY::SR::SPD100XFD | PHY::SR::SPD100XHD)))
+		if (!(phy_sr & SpeedStatus_t(SpeedStatus::Speed100)))
 		{
 			cfg.speed = platform::eth::Speed::Speed10M;
 		}

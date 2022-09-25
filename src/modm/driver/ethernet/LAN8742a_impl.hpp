@@ -12,9 +12,9 @@ template<class MIIMI>
 platform::eth::LinkStatus
 LAN8742a<MIIMI>::readLinkStatus()
 {
-	uint32_t phy_register{0};
-	MIIMI::readPhyRegister(0, PHY::Register::SR, phy_register);
-	if (static_cast<SR_t>(phy_register) & PHY::SR::LINK_STATUS)
+	StatusRegister_t phy_sr;
+	MIIMI::readPhyRegister(0, Register::SR, phy_sr);
+	if (phy_sr & StatusRegister::LinkStatus)
 		linkStatus = platform::eth::LinkStatus::Up;
 	else
 		linkStatus = platform::eth::LinkStatus::Down;

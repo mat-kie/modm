@@ -70,14 +70,14 @@ public:
 	 * 
 	 * @return platform::ANResult The negotiated link speed and duplex mode.
 	 */
-	static platform::ANResult
+	static platform::eth::ANResult
 	startAutoNegotiation()
-	{
+	{ using namespace modm::platform;
 		ControlRegister_t phy_cr;
 		// if Autonegotiation fails, assume 100M Full duplex
-		platform::ANResult cfg{.successful = false,
-							   .mode = platform::eth::DuplexMode::Full,
-							   .speed = platform::eth::Speed::Speed100M};
+		eth::ANResult cfg{.successful = false,
+							   .mode = eth::DuplexMode::Full,
+							   .speed = eth::Speed::Speed100M};
 		// enable auto-negotiation
 		(void)MIIMI::readPhyRegister(0, Register::CR, phy_cr);
 		phy_cr.set(ControlRegister::AN_Restart);
@@ -95,11 +95,11 @@ public:
 		// convert to ANResult
 		if (!(phy_sr & DuplexStatus_t(DuplexStatus::FullDuplex)))
 		{
-			cfg.mode = platform::eth::DuplexMode::Half;
+			cfg.mode = eth::DuplexMode::Half;
 		}
 		if (!(phy_sr & SpeedStatus_t(SpeedStatus::Speed100)))
 		{
-			cfg.speed = platform::eth::Speed::Speed10M;
+			cfg.speed = eth::Speed::Speed10M;
 		}
 		return cfg;
 	};

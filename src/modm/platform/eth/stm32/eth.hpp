@@ -433,12 +433,47 @@ namespace modm
 			};
 			using DmaDescriptor_t = DmaDescriptor;
 
-			class DMADescriptorHandle
+			class RxDMADescriptorHandle
 			{
 				DmaDescriptor_t *dmaDescriptor;
+				static inline  RDes0_t receiveStatus{RDes0::CrcError | RDes0::Ipv4HeaderCrcError | RDes0::EthernetFrameType};
+			public:
+				RxDMADescriptorHandle(DmaDescriptor_t *dd) : dmaDescriptor(dd){};
+				inline uint32_t swapBufferPointer(uint32_t newPointer, uint32_t newSize)
+				{
+					uint32_t old = dmaDescriptor->Buffer1Addr;
+					dmaDescriptor->Buffer1Addr = newPointer;
+					dmaDescriptor->ControlBufferSize = uint32_t(RDes1::SecondAddressChained) |(newSize & Buffer1SizeMask);
+					return old;
+				};
+				inline bool hasValidEthernetFrame()
+				{
+					return ((dmaDescriptor->Status & receiveStatus.value) == uint32_t(RDes0::EthernetFrameType)); // TODO
+				}
+
+				inline uint32_t getFrameLength()
+				{
+					return ((dmaDescriptor->Status & ReceiveDescriptorFrameLengthMask) >> ReceiveDescriptorFrameLengthShift) - 4; // Todo
+				}
+				inline void handBackToDMA()
+				{
+					dmaDescriptor->Status = uint32_t(RDes0::DmaOwned);
+					// set dma ownership
+				}
+				// Todo: some further status determination abstraction
+			};
+
+			class TxDMADescriptorHandle
+			{
+				DmaDescriptor_t *dmaDescriptor;
+				static inline  TDes0_t transmitStatus{
+					CrcControl_t(CrcControl::HardwareCalculated) |
+					TDes0_t(TDes0::InterruptOnCompletion |
+							TDes0::LastSegment |
+							TDes0::FirstSegment)};
 
 			public:
-				DMADescriptorHandle(DmaDescriptor_t *dd) : dmaDescriptor(dd){};
+				TxDMADescriptorHandle(DmaDescriptor_t *dd) : dmaDescriptor(dd){};
 				inline uint32_t swapBufferPointer(uint32_t newPointer, uint32_t newSize)
 				{
 					uint32_t old = dmaDescriptor->Buffer1Addr;
@@ -447,8 +482,11 @@ namespace modm
 					return old;
 				};
 
-				inline uint32_t getStatus() { return dmaDescriptor->Status; };
-				inline void setStatus(const uint32_t status) { dmaDescriptor->Status = status; };
+				inline void handBackToDMA()
+				{
+					dmaDescriptor->Status |= transmitStatus.value | uint32_t(TDes0::DmaOwned);
+					// set dma ownership
+				}
 				// Todo: some further status determination abstraction
 			};
 
@@ -542,13 +580,13 @@ namespace modm
 			 *  this is the RecieveFrame in the procedual IEEE802.3 model
 			 * @return DMADescriptorHandle
 			 */
-			static DMADescriptorHandle getRXFrame();
+			static RxDMADescriptorHandle getRXFrame();
 
 			static bool hasFinishedTXD();
-			static DMADescriptorHandle getFinishedTXD();
+			static TxDMADescriptorHandle getFinishedTXD();
 
 			static bool hasNextTXD();
-			static DMADescriptorHandle getNextTXD();
+			static TxDMADescriptorHandle getNextTXD();
 
 			static bool InitTXDescriptorTable();
 

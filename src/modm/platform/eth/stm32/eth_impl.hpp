@@ -1,3 +1,14 @@
+/**
+ * @file eth_impl.hpp
+ * @author Mattis Kieffer
+ * @brief Adapted from Mike Wolframs original implementation for FreeRTOS+TCP for modm
+ * @version 0.1
+ * @date 2022-09-27
+ *
+ * @copyright Copyright (c) 2022
+ *
+ */
+
 
 // just for ide, will actually never be included due to include guard
 #include "eth.hpp"
@@ -25,7 +36,7 @@ namespace modm::platform
 		NVIC_SetPriority(ETH_IRQn, priority);
 		NVIC_EnableIRQ(ETH_IRQn);
 
-		/* Select MII or RMII Mode*/
+		// Select Interface Mode (MII/RMII)
 		SYSCFG->PMC &= ~(SYSCFG_PMC_MII_RMII_SEL);
 		SYSCFG->PMC |= uint32_t(Interface);
 
@@ -39,7 +50,7 @@ namespace modm::platform
 		/* Note: The SWR is not performed if the ETH_RX_CLK or the ETH_TX_CLK are
 		 * not available, please check your external PHY or the IO configuration */
 		int timeout = 1'000; // max 1ms
-		while ((DmaBusMode(ETH->DMABMR) & DmaBusMode_t(DmaBusMode::SoftwareReset)) and
+		while ((DmaBusMode(ETH->DMABMR) & DmaBusMode::SoftwareReset) and
 			   (timeout-- > 0))
 		{
 			// Wait until the PHY has reset.
@@ -79,12 +90,6 @@ namespace modm::platform
 	{
 
 		uint32_t tmp;
-
-		//		if (autoNegotiationFailed)
-		//		{
-		//			duplexMode = DuplexMode::Full;
-		//			speed = Speed::Speed100M;
-		//		}
 
 		MacConfiguration_t maccr{MacConfiguration::Ipv4ChecksumOffLoad |
 								 MacConfiguration::RetryDisable};
@@ -321,7 +326,7 @@ namespace modm::platform
 	bool
 	Eth<descriptorTableSize>::hasRXFrame()
 	{
-		return (RxDescriptor->Status & uint32_t(RDes0::DmaOwned)) == 0x00000000;
+		return !(RDes0_t(RxDescriptor->Status) & RDes0::DmaOwned);
 	}
 	/**
 	 * @brief get the next RX Framebuffer handle
@@ -329,12 +334,12 @@ namespace modm::platform
 	 * @return DMADescriptorHandle
 	 */
 	template <int descriptorTableSize>
-	eth::DMADescriptorHandle
+	eth::RxDMADescriptorHandle
 	Eth<descriptorTableSize>::getRXFrame()
 	{
 		// advance until we get a descriptor that is not dma owned
 
-		auto descriptor = DMADescriptorHandle(RxDescriptor);
+		auto descriptor = RxDMADescriptorHandle(RxDescriptor);
 		RxDescriptor = reinterpret_cast<DmaDescriptor_t *>(RxDescriptor->Buffer2NextDescAddr);
 		return descriptor;
 	};
@@ -343,14 +348,15 @@ namespace modm::platform
 	bool
 	Eth<descriptorTableSize>::hasFinishedTXD()
 	{
-		return (DmaTxDescriptorToClear->Status & uint32_t(RDes0::DmaOwned)) == 0x00000000;
+
+		return !(TDes0_t(DmaTxDescriptorToClear->Status) & TDes0::DmaOwned);
 	};
 
 	template <int descriptorTableSize>
-	eth::DMADescriptorHandle
+	eth::TxDMADescriptorHandle
 	Eth<descriptorTableSize>::getFinishedTXD()
 	{
-		auto descriptor = DMADescriptorHandle(DmaTxDescriptorToClear);
+		auto descriptor = TxDMADescriptorHandle(DmaTxDescriptorToClear);
 		DmaTxDescriptorToClear = reinterpret_cast<DmaDescriptor_t *>(DmaTxDescriptorToClear->Buffer2NextDescAddr);
 		return descriptor;
 	};
@@ -359,14 +365,14 @@ namespace modm::platform
 	bool
 	Eth<descriptorTableSize>::hasNextTXD()
 	{
-		return (TxDescriptor->Status & uint32_t(RDes0::DmaOwned)) == 0x00000000;
+		return !(TDes0_t(TxDescriptor->Status) & TDes0::DmaOwned);
 	}
 
 	template <int descriptorTableSize>
-	eth::DMADescriptorHandle
+	eth::TxDMADescriptorHandle
 	Eth<descriptorTableSize>::getNextTXD()
 	{
-		auto descriptor = DMADescriptorHandle(TxDescriptor);
+		auto descriptor = TxDMADescriptorHandle(TxDescriptor);
 		TxDescriptor = reinterpret_cast<DmaDescriptor_t *>(TxDescriptor->Buffer2NextDescAddr);
 		return descriptor;
 	}
@@ -427,7 +433,7 @@ namespace modm::platform
 	}
 
 	template <int descriptorTableSize>
-	void 
+	void
 	Eth<descriptorTableSize>::writeReg(volatile uint32_t& reg, uint32_t value)
 	{
 		reg = value;
@@ -436,7 +442,7 @@ namespace modm::platform
 		(void*)(&reg); //cast to void no longer guarantees read in >c++14 but dereferencing seems to to so
 		# pragma GCC diagnostic pop
 		modm::delay_ms(1);
-		reg = value;	
+		reg = value;
 	}
 
 };

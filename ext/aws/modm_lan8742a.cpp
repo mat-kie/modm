@@ -59,140 +59,10 @@ namespace modm
 		static TickType_t phyLinkStatusRemaining;
 		static modm::platform::eth::LinkStatus lastPhyLinkStatus;
 
-		enum class
-			TDes0 : uint32_t
-		{
-			DmaOwned = modm::Bit31,
-			InterruptOnCompletion = modm::Bit30,
-			LastSegment = modm::Bit29,
-			FirstSegment = modm::Bit28,
-			DisableCrc = modm::Bit27,
-			DisablePadding = modm::Bit26,
-			TransmitTimestampEnable = modm::Bit25,
-			CrcCtrl1 = modm::Bit23,
-			CrcCtrl0 = modm::Bit22,
-			TransmitEndOfRing = modm::Bit21,
-			SecondAddressChained = modm::Bit20,
-			TransmitTimestampStatus = modm::Bit17,
-			IpHeaderError = modm::Bit16,
-			ErrorSummary = modm::Bit15,
-			JabberTimeoout = modm::Bit14,
-			FrameFlushed = modm::Bit13,
-			IpPayloadError = modm::Bit12,
-			LossOfCarrier = modm::Bit11,
-			NoCarrier = modm::Bit10,
-			LateCollision = modm::Bit9,
-			ExcessiveCollision = modm::Bit8,
-			VLanFrame = modm::Bit7,
-			CollisionCount3 = modm::Bit6,
-			CollisionCount2 = modm::Bit5,
-			CollisionCount1 = modm::Bit4,
-			CollisionCount0 = modm::Bit3,
-			ExcessiveDeferral = modm::Bit2,
-			UnderflowError = modm::Bit1,
-			DeferredBit = modm::Bit0,
-		};
-		MODM_FLAGS32(TDes0);
-
-		enum class
-			CrcControl : uint32_t
-		{
-			InsertionDisabled = 0b00,
-			IpHeaderOnly = 0b01,
-			IpHeaderAndPayload = 0b10,
-			HardwareCalculated = 0b11
-		};
-		using CrcControl_t = modm::Configuration<TDes0_t, CrcControl, 0b11, 22>;
-
-		enum class
-			RDes0 : uint32_t
-		{
-			DmaOwned = modm::Bit31,
-			DAFilterFail = modm::Bit30,
-			ErrorSummary = modm::Bit15,
-			DescriptorError = modm::Bit14,
-			SAFilterFail = modm::Bit13,
-			LengthError = modm::Bit12,
-			OverflowError = modm::Bit11,
-			VLanFrame = modm::Bit10,
-			FirstSegment = modm::Bit9,
-			LastSegment = modm::Bit8,
-			Ipv4HeaderCrcError = modm::Bit7,
-			LateCollision = modm::Bit6,
-			EthernetFrameType = modm::Bit5,
-			ReceiveWatchdogTimeout = modm::Bit4,
-			ReceiveError = modm::Bit3,
-			DribbleBitError = modm::Bit2,
-			CrcError = modm::Bit1,
-			PayloadCrcError = modm::Bit0,
-		};
-		MODM_FLAGS32(RDes0);
-
-		enum class
-			RDes1 : uint32_t
-		{
-			DisableIrqOnCompletion = modm::Bit31,
-			ReceiveEndOfRing = modm::Bit15,
-			SecondAddressChained = modm::Bit14,
-		};
-		MODM_FLAGS32(RDes1);
-
-		static constexpr uint32_t ReceiveDescriptorFrameLengthMask{0x3fff0000};
-		static constexpr uint32_t ReceiveDescriptorFrameLengthShift{16};
-		static constexpr uint32_t Buffer1SizeMask{0x00001fff};
-		static constexpr uint32_t Buffer2SizeMask{0x1fff0000};
-
-//		struct DmaDescriptor
-//		{
-//			__IO uint32_t Status;		  /*!< Status */
-//			uint32_t ControlBufferSize;	  /*!< Control and Buffer1, Buffer2 lengths */
-//			uint32_t Buffer1Addr;		  /*!< Buffer1 address pointer */
-//			uint32_t Buffer2NextDescAddr; /*!< Buffer2 or next descriptor address pointer */
-//
-//			/*!< Enhanced Ethernet DMA PTP Descriptors */
-//			uint32_t ExtendedStatus; /*!< Extended status for PTP receive descriptor */
-//			uint32_t Reserved1;		 /*!< Reserved */
-//			uint32_t TimeStampLow;	 /*!< Time Stamp Low value for transmit and receive */
-//			uint32_t TimeStampHigh;	 /*!< Time Stamp High value for transmit and receive */
-//		};
-//		using DmaDescriptor_t = DmaDescriptor;
-
-		/* Ethernet Rx DMA Descriptor */
-//		modm_aligned(32) static DmaDescriptor_t DmaRxDescriptorTable[RX_BUFFER_NUMBER];
-
-		/* Ethernet Tx DMA Descriptor */
-//		modm_aligned(32) static DmaDescriptor_t DmaTxDescriptorTable[TX_BUFFER_NUMBER];
-
-//		static DmaDescriptor_t *RxDescriptor; /*!< Rx descriptor to Get        */
-//		static DmaDescriptor_t *TxDescriptor; /*!< Tx descriptor to Set        */
-//		static DmaDescriptor_t *DmaTxDescriptorToClear;
-
 		static void
-		DMATxDescListInit()
+		InitializeRecieveBuffers()
 		{
-//			static constexpr TDes0_t dmaDescriptorStatus{
-//				TDes0_t(TDes0::SecondAddressChained) |
-//				CrcControl_t(CrcControl::HardwareCalculated)};
-
-//			DmaDescriptor_t *dmaDescriptor{TxDescriptor};
-
-//			for (BaseType_t index = 0; index < TX_BUFFER_NUMBER; ++index, ++dmaDescriptor)
-//			{
-//				dmaDescriptor->Status = dmaDescriptorStatus.value;
-//
-//				if (index < TX_BUFFER_NUMBER - 1)
-//					dmaDescriptor->Buffer2NextDescAddr = uint32_t(dmaDescriptor + 1);
-//				else
-//					dmaDescriptor->Buffer2NextDescAddr = uint32_t(TxDescriptor);
-//			}
-//
-//			EMAC::setDmaTxDescriptorTable(uint32_t(TxDescriptor));
-			EMAC::InitTXDescriptorTable();
-		}
-		static void
-		DMARxDescListInit()
-		{
-			//DmaDescriptor_t *dmaDescriptor{RxDescriptor};
+			// DmaDescriptor_t *dmaDescriptor{RxDescriptor};
 			uint32_t bparray[5];
 			for (BaseType_t index = 0; index < RX_BUFFER_NUMBER; ++index)
 			{
@@ -202,28 +72,21 @@ namespace modm
 				{
 					bparray[index] = uint32_t(newBuf->pucEthernetBuffer);
 				}
-
 			}
 			EMAC::InitRXDescriptorTable(bparray, RX_BUFFER_SIZE);
-			//EMAC::setDmaRxDescriptorTable(uint32_t(RxDescriptor));
+			// EMAC::setDmaRxDescriptorTable(uint32_t(RxDescriptor));
 		}
 
 		static void
 		clearTxBuffers()
 		{
-//			__IO DmaDescriptor_t *txLastDesc{TxDescriptor};
 			std::size_t count{TX_BUFFER_NUMBER - uxSemaphoreGetCount(txDescriptorSemaphore)};
 			NetworkBufferDescriptor_t *networkBuffer{nullptr};
 			uint8_t *payLoad{nullptr};
 
 			while (count > 0 && EMAC::hasFinishedTXD())
 			{
-				//((DmaTxDescriptorToClear->Status & uint32_t(TDes0::DmaOwned)) == 0)) {
 				auto txcHandle = EMAC::getFinishedTXD();
-				// if (DmaTxDescriptorToClear == txLastDesc and count != TX_BUFFER_NUMBER)
-				//					break;
-
-				// DmaTxDescriptorToClear->Buffer1Addr = 0;
 				payLoad = reinterpret_cast<uint8_t *>(txcHandle.swapBufferPointer(0, 0));
 				if (payLoad)
 				{
@@ -231,8 +94,6 @@ namespace modm
 					if (networkBuffer)
 						vReleaseNetworkBufferAndDescriptor(networkBuffer);
 				}
-
-				// DmaTxDescriptorToClear = reinterpret_cast<DmaDescriptor_t *>(DmaTxDescriptorToClear->Buffer2NextDescAddr);
 				--count;
 				xSemaphoreGive(txDescriptorSemaphore);
 			}
@@ -312,7 +173,6 @@ namespace modm
 		emacInterfaceInput()
 		{
 			static constexpr TickType_t descriptorWaitTime{pdMS_TO_TICKS(250)};
-			static constexpr RDes0_t receiveStatus{RDes0::CrcError | RDes0::Ipv4HeaderCrcError | RDes0::EthernetFrameType};
 
 			NetworkBufferDescriptor_t *currentDescriptor{nullptr};
 			NetworkBufferDescriptor_t *newDescriptor{nullptr};
@@ -327,10 +187,10 @@ namespace modm
 			{
 				auto rxdHandle = EMAC::getRXFrame();
 				bool accepted = true;
-				receivedLength = ((rxdHandle.getStatus() & ReceiveDescriptorFrameLengthMask) >> ReceiveDescriptorFrameLengthShift) - 4;
+				receivedLength = rxdHandle.getFrameLength();
 
 				// if ((dmaRxDescriptor->Status & receiveStatus.value) != uint32_t(RDes0::EthernetFrameType))
-				if ((rxdHandle.getStatus() & receiveStatus.value) == uint32_t(RDes0::EthernetFrameType))
+				if (rxdHandle.hasValidEthernetFrame())
 					newDescriptor = pxGetNetworkBufferWithDescriptor(RX_BUFFER_SIZE, descriptorWaitTime);
 				if (not newDescriptor)
 				{
@@ -339,9 +199,8 @@ namespace modm
 				else
 				{
 					uint32_t rxb_ptr = rxdHandle.swapBufferPointer(
-							uint32_t(newDescriptor->pucEthernetBuffer),
-							uint32_t(RX_BUFFER_SIZE)
-						);
+						uint32_t(newDescriptor->pucEthernetBuffer),
+						uint32_t(RX_BUFFER_SIZE));
 					buffer = reinterpret_cast<uint8_t *>(rxb_ptr);
 					accepted = mayAcceptPacket(buffer);
 				}
@@ -366,7 +225,7 @@ namespace modm
 				// dmaRxDescriptor->ControlBufferSize = uint32_t(RDes1::SecondAddressChained) |
 				//		uint32_t(RX_BUFFER_SIZE);
 				/// dmaRxDescriptor->Status = uint32_t(RDes0::DmaOwned);
-				rxdHandle.setStatus(uint32_t(RDes0::DmaOwned));
+				rxdHandle.handBackToDMA();
 				__DSB();
 
 				if (ETH->DMASR & ETH_DMASR_RBUS)
@@ -501,12 +360,6 @@ namespace modm
 	modm::platform::eth::LinkStatus ethernet::lastPhyLinkStatus{modm::platform::eth::LinkStatus::Down};
 	TickType_t ethernet::phyLinkStatusRemaining{0};
 
-//	ethernet::DmaDescriptor_t ethernet::DmaRxDescriptorTable[RX_BUFFER_NUMBER];
-//	ethernet::DmaDescriptor_t ethernet::DmaTxDescriptorTable[TX_BUFFER_NUMBER];
-//	ethernet::DmaDescriptor_t *ethernet::RxDescriptor{nullptr}; /*!< Rx descriptor to Get        */
-//	ethernet::DmaDescriptor_t *ethernet::TxDescriptor{nullptr}; /*!< Tx descriptor to Set        */
-//	ethernet::DmaDescriptor_t *ethernet::DmaTxDescriptorToClear{nullptr};
-//
 } // namespace modm
 
 extern "C" BaseType_t
@@ -533,16 +386,8 @@ xNetworkInterfaceInitialise()
 
 		(void)EMAC::initialize<modm::platform::eth::MediaInterface::RMII>();
 		EPHY::initialize();
-//		ethernet::TxDescriptor = ethernet::DmaTxDescriptorTable;
-//		ethernet::RxDescriptor = ethernet::DmaRxDescriptorTable;
-
-//		std::memset(&ethernet::DmaTxDescriptorTable, 0, sizeof(ethernet::DmaTxDescriptorTable));
-		//std::memset(&ethernet::DmaRxDescriptorTable, 0, sizeof(ethernet::DmaRxDescriptorTable));
-
-		//ethernet::DmaTxDescriptorToClear = ethernet::DmaTxDescriptorTable;
-
-		ethernet::DMATxDescListInit();
-		ethernet::DMARxDescListInit();
+		EMAC::InitTXDescriptorTable();
+		ethernet::InitializeRecieveBuffers();
 
 		ethernet::updateConfig(true);
 
@@ -579,11 +424,6 @@ xNetworkInterfaceOutput(NetworkBufferDescriptor_t *const descriptor, BaseType_t 
 	using modm::ethernet;
 
 	static constexpr TickType_t blockTimeTicks{pdMS_TO_TICKS(50)};
-	static constexpr ethernet::TDes0_t transmitStatus{
-		ethernet::CrcControl_t(ethernet::CrcControl::HardwareCalculated) |
-		ethernet::TDes0_t(ethernet::TDes0::InterruptOnCompletion |
-						  ethernet::TDes0::LastSegment |
-						  ethernet::TDes0::FirstSegment)};
 
 	BaseType_t result{pdFAIL};
 	uint32_t transmitSize{0};
@@ -618,7 +458,7 @@ xNetworkInterfaceOutput(NetworkBufferDescriptor_t *const descriptor, BaseType_t 
 			uint32_t(descriptor->pucEthernetBuffer),
 			transmitSize);
 		releaseAfterSend = pdFALSE_SIGNED;
-		dHandle.setStatus(dHandle.getStatus() | transmitStatus.value | uint32_t(ethernet::TDes0::DmaOwned));
+		dHandle.handBackToDMA();
 		// dmaTxDescriptor->Status |= uint32_t(ethernet::TDes0::DmaOwned);
 		// ethernet::TxDescriptor = reinterpret_cast<ethernet::DmaDescriptor_t *>(ethernet::TxDescriptor->Buffer2NextDescAddr);
 		__DSB();

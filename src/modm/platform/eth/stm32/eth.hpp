@@ -433,12 +433,33 @@ namespace modm
 			};
 			using DmaDescriptor_t = DmaDescriptor;
 
+			/**
+			 * @brief wrapper for Dma descriptor handling.
+			 *
+			 * this primarily is meant to be an abstraction for the interface between the hardware
+			 * MAC unit implementation and the Network Protocol stack for passing buffers.
+			 *
+			 *
+			 */
 			class RxDMADescriptorHandle
 			{
-				DmaDescriptor_t *dmaDescriptor;
+				DmaDescriptor_t *dmaDescriptor;		///< This is a pointer to the managed DMA Descriptor
+
+				// TODO: maybe refactor this. this is the satus mask to determine if we have a valid ethernet frame
+				// DANGER FOR STM32: if the PTP Engine is used (and therefore enhanced descriptors)
+				// the IPv4 CRC Error Bit is the Timestamp Valid bit
+				// Thus every frame with timestamp gets dropped!
 				static inline  RDes0_t receiveStatus{RDes0::CrcError | RDes0::Ipv4HeaderCrcError | RDes0::EthernetFrameType};
 			public:
-				RxDMADescriptorHandle(DmaDescriptor_t *dd) : dmaDescriptor(dd){};
+				explicit RxDMADescriptorHandle(DmaDescriptor_t *dd) : dmaDescriptor(dd){};
+
+				/**
+				 * @brief swap the underlying memory buffer pointer
+				 *
+				 * @param newPointer  the address of the buffer we hand to the dma
+				 * @param newSize 		the available size of the new buffer in bytes
+				 * @return uint32_t the adress of the buffer previously held by the dma
+				 */
 				inline uint32_t swapBufferPointer(uint32_t newPointer, uint32_t newSize)
 				{
 					uint32_t old = dmaDescriptor->Buffer1Addr;
@@ -446,15 +467,32 @@ namespace modm
 					dmaDescriptor->ControlBufferSize = uint32_t(RDes1::SecondAddressChained) |(newSize & Buffer1SizeMask);
 					return old;
 				};
+
+				/**
+				 * @brief check wether the DmaDescriptor has a valid ethernet frame for us
+				 *
+				 * @return true
+				 * @return false
+				 */
 				inline bool hasValidEthernetFrame()
 				{
 					return ((dmaDescriptor->Status & receiveStatus.value) == uint32_t(RDes0::EthernetFrameType)); // TODO
 				}
 
+				/**
+				 * @brief Get the Frame Length of the frame in the buffer
+				 *
+				 * @return uint32_t
+				 */
 				inline uint32_t getFrameLength()
 				{
 					return ((dmaDescriptor->Status & ReceiveDescriptorFrameLengthMask) >> ReceiveDescriptorFrameLengthShift) - 4; // Todo
 				}
+
+				/**
+				 * @brief return dma descriptor ownership to the dma
+				 *
+				 */
 				inline void handBackToDMA()
 				{
 					dmaDescriptor->Status = uint32_t(RDes0::DmaOwned);
@@ -523,6 +561,7 @@ namespace modm
 			static inline DmaDescriptor_t *DmaTxDescriptorToClear = DmaTxDescriptorTable; ///< pointer to active descriptor
 
 		public:
+
 			template <class... Signals>
 			static void
 			connect();

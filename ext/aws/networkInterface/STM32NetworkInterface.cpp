@@ -9,6 +9,7 @@
  */
 
 #include "STM32NetworkInterface.hpp"
+#include <modm/platform/random/random_number_generator.hpp>
 using namespace modm::NetworkInterface;
 using EMAC = modm::platform::Eth;
 
@@ -359,7 +360,7 @@ extern "C" BaseType_t
 xNetworkInterfaceInitialise()
 {
 	using modm::NetworkInterface::ethernet;
-
+	modm::platform::RandomNumberGenerator::enable();
 	if (ethernet::initStatus == ethernet::InitStatus::Init)
 	{
 		ethernet::txDescriptorSemaphore = xSemaphoreCreateCounting(UBaseType_t(ethernet::TX_BUFFER_NUMBER),
@@ -516,6 +517,23 @@ MODM_ISR(ETH)
 	{
 		// not used yet
 	}
-}
+};
 
 
+
+extern "C"
+BaseType_t xApplicationGetRandomNumber(uint32_t *pulNumber)
+{
+	modm::platform::RandomNumberGenerator::enable();
+	while(!modm::platform::RandomNumberGenerator::isReady());
+	*(pulNumber) = modm::platform::RandomNumberGenerator::getValue();
+	return pdTRUE;
+};
+
+extern "C"
+uint32_t ulApplicationGetNextSequenceNumber(uint32_t, uint16_t, uint32_t, uint16_t)
+{
+	modm::platform::RandomNumberGenerator::enable();
+	while(!modm::platform::RandomNumberGenerator::isReady());
+	return modm::platform::RandomNumberGenerator::getValue();
+};

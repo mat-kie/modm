@@ -13,7 +13,7 @@
 
 class FreeRTOS_TCP_STM32_NetworkInterface(Module):
     def init(self, module):
-        module.name = "stm32NetwirkInterface"
+        module.name = "stm32NetworkInterface"
         module.description = """
 # a:FreeRTOS-Plus-TCP NetworkInterface Implementation for the STM32
 
@@ -26,12 +26,13 @@ This module implements the external Linkage functions required by FreeRTOS+TCP.
         if device.identifier.family not in ["f7", "f4"]:
             return False
         module.depends(":platform:eth")
+        module.depends(":platform:random")
         return True
 
     def build(self, env):
         env.outbasepath = "modm/ext/freertos_plus_tcp"
-        env.copy("./networkInterface/STM32NetworkInterface.cpp")
-        env.copy("./networkInterface/STM32NetworkInterface.hpp")
+        env.copy("./networkInterface/STM32NetworkInterface.cpp", "STM32NetworkInterface.cpp")
+        env.copy("./networkInterface/STM32NetworkInterface.hpp", "STM32NetworkInterface.hpp")
 
 
 

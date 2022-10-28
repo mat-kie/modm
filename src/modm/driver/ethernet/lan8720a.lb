@@ -26,3 +26,4 @@ def prepare(module, options):
 def build(env):
     env.outbasepath = "modm/src/modm/driver/ethernet"
     env.copy("lan8720a.hpp")
+    env.copy("PHYInterface.hpp")

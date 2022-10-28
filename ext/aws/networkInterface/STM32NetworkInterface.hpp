@@ -24,7 +24,7 @@
 #include "FreeRTOS_ARP.h"
 #include "NetworkBufferManagement.h"
 
-#include <modm/driver/ethernet/IPHY.hpp>
+#include <modm/driver/ethernet/PHYInterface.hpp>
 #include <cstring>
 
 namespace modm::NetworkInterface

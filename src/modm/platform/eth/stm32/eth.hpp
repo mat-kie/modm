@@ -16,17 +16,56 @@
 #include <modm/architecture/interface.hpp>
 #include <modm/math/utils/bit_constants.hpp>
 #include "../device.hpp"
-
+#include <modm/platform/clock/rcc.hpp>
 #include <array>
 #include <cstring>
 #include <modm/driver/ethernet/PHYInterface.hpp>
 #include "PHYBase.hpp"
+#define ADJ_FREQ_BASE_ADDEND 0x3B309D72
+#define ADJ_FREQ_BASE_INCREMENT 43
+
+#define ETH_PTP_PositiveTime ((uint32_t)0x00000000) /*!< Positive time value */
+#define ETH_PTP_NegativeTime ((uint32_t)0x80000000) /*!< Negative time value */
+#define IS_ETH_PTP_TIME_SIGN(SIGN) (((SIGN) == ETH_PTP_PositiveTime) || \
+									((SIGN) == ETH_PTP_NegativeTime))
+
 namespace modm::platform
 {
 
 	/// @ingroup modm_platform_eth
 	struct eth
 	{
+		/*struct EthTimeStamp
+		{
+			int32_t seconds;
+			int32_t nanoseconds;
+
+			static EthTimeStamp fromRegs(uint32_t hiReg, uint64_t lowreg)
+			{
+				// 2^32 / subsec increment = number of increments per second
+				// nsec = subsec * 1e9 / 2^31;
+				// subsec * 1e9 >>32
+				lowreg *= 1'000'000'000ULL;
+				return EthTimeStamp{
+					.seconds = int32_t(hiReg),
+					.nanoseconds = int32_t(lowreg >> 31) // divide by 2^31;
+				};
+			};
+			uint32_t toSeconds()
+			{
+				return seconds;
+			}
+			uint32_t toSubSecond()
+			{
+				// the subsecond register rolls over every second
+				// so we have subseconds = nanoseconds /1e9 * 2^31
+				// since we have integer math we first multiply by 2^31
+				uint64_t x = nanoseconds << 31;
+				// then we divide.
+				return uint32_t(x / 1'000'000'000ULL);
+			}
+		};*/
+
 		enum class
 			MediaInterface : uint32_t
 		{
@@ -104,6 +143,36 @@ namespace modm::platform
 		};
 		MODM_FLAGS32(InterruptFlags);
 
+		enum class TimeStampControlRegister : uint32_t
+		{
+			PTPMacFrameFilterEnable = Bit18,
+			ClockNodeType1 = Bit17,
+			ClockNodeType0 = Bit16,
+			TimeStampMasterMode = Bit15,
+			TimeStampEventMsg = Bit14,
+			TimeStampIPv4 = Bit13,
+			TimeStampIPv6 = Bit12,
+			TimeStamp802_3 = Bit11,
+			SnoopPTPV2 = Bit10,
+			SubSecondRollover = Bit9,
+			TimeStampAllFrames = Bit8,
+			TimeStampAddendRegisterUpdate = Bit5,
+			TimeStampInterruptTrigger = Bit4,
+			TimeStampSystemtTimeUpdate = Bit3,
+			TimeStampSystemTimeInitialize = Bit2,
+			TimeStampFineUpdate = Bit1,
+			TimeStampEnable = Bit0
+		};
+		MODM_FLAGS32(TimeStampControlRegister);
+
+		enum class ClockType : uint32_t
+		{
+			Ordinary = 0b00,
+			Boundary = 0b01,
+			E2ETransparent = 0b10,
+			P2PTransparent = 0b11
+		};
+		typedef modm::Configuration<TimeStampControlRegister_t, ClockType, 0b11, 16> ClockType_t;
 		enum class
 			Event : uint32_t
 		{
@@ -421,7 +490,7 @@ namespace modm::platform
 
 			uint32_t tmp;
 
-			MacConfiguration_t maccr{MacConfiguration::Ipv4ChecksumOffLoad |
+			MacConfiguration_t maccr{// MacConfiguration::Ipv4ChecksumOffLoad |
 									 MacConfiguration::RetryDisable};
 			maccr |= Speed_t(negotiated.speed);
 			maccr |= DuplexMode_t(negotiated.mode);
@@ -433,6 +502,7 @@ namespace modm::platform
 			MacFrameFilter_t macffr{
 				PassControlFrame_t(PassControlFrame::BlockAll),
 			};
+			macffr.set(MacFrameFilter::HashOrPerfect);
 			writeMACFFR(macffr.value);
 
 			// Hash table
@@ -579,68 +649,352 @@ namespace modm::platform
 			ETH->DMAIER |= irq.value;
 		}
 		template <class T>
-		static bool readPhyRegister(uint32_t Address, PHYBase::Register reg, T& value);
-		template<class T>
+		static bool readPhyRegister(uint32_t Address, PHYBase::Register reg, T &value);
+		template <class T>
 		static bool writePhyRegister(uint32_t Address, PHYBase::Register reg, T value);
 
+		void enablePTPMacFilter()
+		{
+			auto reg = TimeStampControlRegister_t(ETH->PTPTSCR);
+			reg.set(TimeStampControlRegister::PTPMacFrameFilterEnable);
+			writeRegister(ETH->PTPTSCR, reg.value);
+		};
+
+		void disablePTPMacFilter()
+		{
+			auto reg = TimeStampControlRegister_t(ETH->PTPTSCR);
+			reg.reset(TimeStampControlRegister::PTPMacFrameFilterEnable);
+			writeRegister(ETH->PTPTSCR, reg.value);
+		};
+
+		void setClockNodeType(ClockType_t type)
+		{
+			auto reg = TimeStampControlRegister_t(ETH->PTPTSCR);
+			reg = (type | (~type.mask())) & reg;
+			writeRegister(ETH->PTPTSCR, reg.value);
+		};
+
+		ClockType_t getClockNodeType()
+		{
+			return ClockType_t(ETH->PTPTSCR);
+		};
+
+		// void coarseTimeUpdate(EthTimeStamp &timedelta, bool isPositive);
+
+		void adjustFrequency(int32_t frequencyChangePPB);
+		uint32_t getFrequency();
+
+		bool initializePTP()
+		{
+			/**
+			 * @brief
+			 * The time stamping feature can be enabled by setting bit 0 in the Time stamp control register
+			 * (ETH__PTPTSCR). However, it is essential to initialize the time stamp counter after this bit
+			 * is set to start time stamp operation. The proper sequence is the following.  If time stamp operation is disabled by clearing bit 0 in the ETH_PTPTSCR register, the
+			 * above steps must be repeated to restart the time stamp operation.*/
+
+			// 1. Mask the Time stamp trigger interrupt by setting bit 9 in the MACIMR register.
+			// TODO
+			// 2. Program Time stamp register bit 0 to enable time stamping.
+			TimeStampControlRegister_t cr(ETH->PTPTSCR);
+			cr.set(TimeStampControlRegister::TimeStampEnable);
+			writeRegister(ETH->PTPTSCR, cr.value);
+			// 3. Program the Subsecond increment register based on the PTP clock frequency.
+			// 20 ns addend register overflow assumed
+			writeRegister(ETH->PTPSSIR, 43);
+			// 4. If you are using the Fine correction method, program the Time stamp addend register
+			adjustFrequency(0);
+			// and set Time stamp control register bit 5 (addend register update).
+
+			// 5. Poll the Time stamp control register until bit 5 is cleared.
+			while (TimeStampControlRegister_t(ETH->PTPTSCR).any(TimeStampControlRegister::TimeStampAddendRegisterUpdate))
+				;
+			// 6. To select the Fine correction method (if required), program Time stamp control register bit 1.
+			cr = TimeStampControlRegister_t(ETH->PTPTSCR);
+			cr.set(TimeStampControlRegister::TimeStampFineUpdate);
+			writeRegister(ETH->PTPTSCR, cr.value);
+			// 7. Program the Time stamp high update and Time stamp low update registers with the
+			// appropriate time value.
+			writeRegister(ETH->PTPTSHUR, 0);
+			writeRegister(ETH->PTPTSLUR, 0);
+
+			// 8. Set Time stamp control register bit 2 (Time stamp init).
+
+			// 9. The Time stamp counter starts operation as soon as it is initialized with the value
+			// written in the Time stamp update register.
+			// 10. Enable the MAC receiver and transmitter for proper time stamping.
+			return true;
+		};
+		void enableFrameTimestamping();
+		// void enableTimedInterrupt(const EthTimeStamp &triggerTime);
 
 	private:
+		/**
+		 * @brief Attention: Errata sheet ES0290 Rev 7: 2.14.5 :
+		 * Successive write operations need 4 idle tx/rx clock cycles inbetween
+		 * for MII in 100mbit mode those are 25Mhz for RMII 50Mhz for 10 bit 2.5Mhz and 5Mhz
+		 * so at most 1.6µs!
+		 *
+		 * The stated workaround does not require the read when the delay is guaranteed
+		 */
+		static void writeRegister(volatile uint32_t &reg, uint32_t value)
+		{
+			// reg = value;
+			//(void)reg;
+			modm::delay_us(2);
+			// todo: when the last write is more thenn the 4 cylces in the past write directly
+			reg = value;
+		};
 		static void
 		writeMACCR(uint32_t value)
 		{
-			ETH->MACCR = value;
+			/*ETH->MACCR = value;
 			(void)ETH->MACCR;
 			modm::delay_ms(1);
-			ETH->MACCR = value;
+			ETH->MACCR = value;*/
+			writeRegister(ETH->MACCR, value);
 		}
 		static void
 		writeMACFCR(uint32_t value)
 		{
-			ETH->MACFCR = value;
+			writeRegister(ETH->MACFCR, value);
+			/*ETH->MACFCR = value;
 			(void)ETH->MACFCR;
 			modm::delay_ms(1);
-			ETH->MACFCR = value;
+			ETH->MACFCR = value;*/
 		}
 		static void
 		writeMACFFR(uint32_t value)
 		{
-			ETH->MACFFR = value;
+			writeRegister(ETH->MACFFR, value);
+			/*ETH->MACFFR = value;
 			(void)ETH->MACFFR;
 			modm::delay_ms(1);
-			ETH->MACFFR = value;
+			ETH->MACFFR = value;*/
 		}
 		static void
 		writeMACVLANTR(uint32_t value)
 		{
-			ETH->MACVLANTR = value;
+			writeRegister(ETH->MACVLANTR, value);
+			/*ETH->MACVLANTR = value;
 			(void)ETH->MACVLANTR;
 			modm::delay_ms(1);
-			ETH->MACVLANTR = value;
+			ETH->MACVLANTR = value;*/
 		}
 		static void
 		writeDMABMR(uint32_t value)
 		{
-			ETH->DMABMR = value;
+			writeRegister(ETH->DMABMR, value);
+			/*ETH->DMABMR = value;
 			(void)ETH->DMABMR;
 			modm::delay_ms(1);
-			ETH->DMABMR = value;
+			ETH->DMABMR = value;*/
 		}
 		static void
 		writeDMAOMR(uint32_t value)
 		{
-			ETH->DMAOMR = value;
+			writeRegister(ETH->DMAOMR, value);
+			/*ETH->DMAOMR = value;
 			(void)ETH->DMAOMR;
 			modm::delay_ms(1);
-			ETH->DMAOMR = value;
+			ETH->DMAOMR = value;*/
 		}
 
 		static inline PHYInterface::DuplexMode duplexMode = PHYInterface::DuplexMode::Full;
 		static inline PHYInterface::Speed speed = PHYInterface::Speed::Speed100M;
 		static inline PHYInterface::LinkStatus linkStatus = PHYInterface::LinkStatus::Down;
-
+		static inline uint32_t lastWriteCYCNT = 0;
 		using MacAddress = std::array<uint8_t, 6>;
 		using MacAddresses = std::array<MacAddress, 4>;
 		static inline MacAddresses macAddresses;
+	};
+
+	//*+++++++++++++++++++++ EXTERN C +++++++++++++++++++++++++
+	namespace ptp
+	{
+		typedef struct PTPTimeRegister
+		{
+			uint32_t seconds;
+			uint32_t subseconds;
+		} PTPTimeRegister_t;
+
+		static uint32_t subsecond_to_nanosecond(uint32_t subsecond_value)
+		{
+			uint64_t val = subsecond_value * 1000000000ll;
+			val >>= 31;
+			return val;
+		}
+
+		// Conversion from PTP to hardware format.
+		static uint32_t nanosecond_to_subsecond(uint32_t subsecond_value)
+		{
+			uint64_t val = subsecond_value * 0x80000000ll;
+			val /= 1000000000;
+			return val;
+		}
+
+		static void set_reg_save(volatile uint32_t &regaddr, uint32_t bits)
+		{
+			uint32_t temp = regaddr;
+			temp |= bits;
+			modm::delay_us(2);
+			regaddr = temp;
+			return;
+		};
+
+		static void reset_reg_save(volatile uint32_t &regaddr, uint32_t bits)
+		{
+			uint32_t temp = regaddr;
+			temp &= ~(bits);
+			modm::delay_us(2);
+			regaddr = temp;
+			return;
+		};
+
+		static void start()
+		{
+			using namespace modm::platform;
+			using modm::platform::eth;
+			using TimeStampControlRegister_t = modm::platform::eth::TimeStampControlRegister_t;
+			using TimeStampControlRegister = modm::platform::eth::TimeStampControlRegister;
+			// config
+			//
+
+			// vRegisterDelay();
+
+			// 1. Mask the Time stamp trigger interrupt by setting bit 9 in the MACIMR register.
+			set_reg_save(ETH->MACIMR, 1 << 9);
+			// vRegisterDelay();
+			// config
+
+			TimeStampControlRegister_t tscr(ETH->PTPTSCR);
+			tscr |= TimeStampControlRegister::TimeStamp802_3	   // enable 803.2 timestamping
+					| TimeStampControlRegister::SnoopPTPV2		   // enable ptp v2 snooping
+					| TimeStampControlRegister::TimeStampEventMsg; // enable snapshots for event messages
+			set_reg_save(ETH->PTPTSCR, tscr.value);
+			set_reg_save(ETH->PTPTSCR, uint32_t(TimeStampControlRegister::TimeStampEnable));
+			// vRegisterDelay();
+			//  3. Program the Subsecond increment register based on the PTP clock frequency.
+			modm::delay_us(2);
+			ETH->PTPSSIR = ADJ_FREQ_BASE_INCREMENT;
+
+			// 4. If you are using the Fine correction method, program the Time stamp addend register
+			//    and set Time stamp control register bit 5 (addend register update).
+			// yes we are
+			modm::delay_us(2);
+			ETH->PTPTSAR = ADJ_FREQ_BASE_ADDEND;
+			set_reg_save(ETH->PTPTSCR, uint32_t(TimeStampControlRegister::TimeStampAddendRegisterUpdate));
+			// 5. Poll the Time stamp control register until bit 5 is cleared.
+			while (
+				TimeStampControlRegister_t(ETH->PTPTSCR) & TimeStampControlRegister::TimeStampAddendRegisterUpdate)
+				;
+			// 6. To select the Fine correction method (if required), program Time stamp control register bit 1.
+			set_reg_save(ETH->PTPTSCR, uint32_t(TimeStampControlRegister::TimeStampFineUpdate));
+			// 7. Program the Time stamp high update and Time stamp low update registers with the
+			// appropriate time value.
+			//  for now initialize to 0
+			modm::delay_us(2);
+			ETH->PTPTSHUR = 0;
+			modm::delay_us(2);
+			ETH->PTPTSLUR = 0;
+			// 8. Set Time stamp control register bit 2 (Time stamp init).
+			set_reg_save(ETH->PTPTSCR, uint32_t(TimeStampControlRegister::TimeStampSystemTimeInitialize));
+			// 9. The Time stamp counter starts operation as soon as it is initialized with the value
+			// written in the Time stamp update register.
+			// 10. Enable the MAC receiver and transmitter for proper time stamping.
+			//  Mask the time stamp trigger interrupt by setting bit 9 in the MACIMR register.
+
+			// block until PTP clock starts running:
+			while ((ETH->PTPTSCR & uint32_t(TimeStampControlRegister::TimeStampSystemTimeInitialize)) != 0)
+				;
+
+			// Set PPS to 2 ^10 (1024 Hz)
+			// ETH->PTPPPSCR = 10;
+			// enable pps
+			// set_reg_save(TIM2->OR, TIM2_OR_ITR1_RMP_0);
+		};
+
+		// Get the PTP time.
+
+		static PTPTimeRegister get_time()
+		{
+			int32_t hi_reg;
+			int32_t lo_reg;
+			int32_t hi_reg_after;
+
+			// The problem is we are reading two 32-bit registers that form
+			// a 64-bit value, but it's possible the high 32-bits of the value
+			// rolls over before we read the low 32-bits of the value.  To avoid
+			// this situation we read the high 32-bits twice and determine which
+			// high 32-bits the low 32-bit are associated with.
+			__disable_irq();
+			hi_reg = ETH->PTPTSHR;
+			lo_reg = ETH->PTPTSLR;
+			hi_reg_after = ETH->PTPTSHR;
+			__enable_irq();
+
+			// Did a roll over occur while reading?
+			if (hi_reg != hi_reg_after)
+			{
+				// We now know a roll over occurred. If the rollover occured before
+				// the reading of the low 32-bits we move the substitute the second
+				// 32-bit high value for the first 32-bit high value.
+				if (lo_reg < (INT_MAX / 2))
+					hi_reg = hi_reg_after;
+			}
+
+			// Now convert the raw registers values into timestamp values.
+			return PTPTimeRegister{.seconds=hi_reg, .subseconds = lo_reg};
+		};
+
+		static void coarseUpdate(uint32_t high_reg, uint32_t lowReg, bool isPositive)
+		{
+			using namespace modm::platform;
+			using modm::platform::eth;
+			using TimeStampControlRegister_t = modm::platform::eth::TimeStampControlRegister_t;
+			using TimeStampControlRegister = modm::platform::eth::TimeStampControlRegister;
+			// Convert nanosecond to subseconds.
+
+			// Write the offset (positive or negative) in the Time stamp update
+			// high and low registers.
+			// Set the PTP Time Update High Register
+			ETH->PTPTSHUR = high_reg;
+			constexpr uint32_t sign_bit = (1 << 31);
+			if (isPositive)
+			{
+				ETH->PTPTSLUR = (lowReg & ~(sign_bit));
+			}else{
+				ETH->PTPTSLUR = (lowReg | sign_bit);
+			}
+			// wait for TS System time initialize bit to be cleared
+			while ((ETH->PTPTSCR & uint32_t(TimeStampControlRegister::TimeStampSystemTimeInitialize)) != 0)
+				;
+			// Set Time stamp control register bit 2 (Time stamp init).
+			ETH->PTPTSCR |= uint32_t(TimeStampControlRegister::TimeStampSystemtTimeUpdate);
+			// block until initialization is complete
+			while ((ETH->PTPTSCR & uint32_t(TimeStampControlRegister::TimeStampSystemtTimeUpdate)) != 0);
+		};
+
+		// Adjust the PTP system clock rate by the specified value in parts-per-billion.
+
+		static void adj_freq(int32_t adj_ppb)
+		{
+			using namespace modm::platform;
+			using modm::platform::eth;
+
+			using TimeStampControlRegister = modm::platform::eth::TimeStampControlRegister;
+
+			// Adjust the fixed base frequency by parts-per-billion.
+			// addend = base + ((base * adj_ppb) / 1000000000);
+			// addend <- the PTPTSARegister
+			ETH->PTPTSAR = ADJ_FREQ_BASE_ADDEND + (int32_t)((((int64_t)ADJ_FREQ_BASE_ADDEND) * adj_ppb) / 1'000'000'000);
+
+			// ETH_EnablePTPTimeStampAddend();
+			//  wait until TSARU bit is cleared before setting it. according to refman
+			while ((ETH->PTPTSCR & uint32_t(TimeStampControlRegister::TimeStampAddendRegisterUpdate)) != 0);
+			// set addend enable bit
+			ETH->PTPTSCR |= uint32_t(TimeStampControlRegister::TimeStampAddendRegisterUpdate);
+		}
 	};
 
 }

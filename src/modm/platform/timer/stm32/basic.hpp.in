@@ -111,6 +111,13 @@ public:
 		return TIM{{ id }}->ARR;
 	}
 
+	template<class SystemClock>
+	static constexpr uint32_t
+	getClockFrequency()
+	{
+		return SystemClock::Timer{{ id }};
+	}
+
 	template<class SystemClock, class Rep, class Period>
 	static Value
 	setPeriod(std::chrono::duration<Rep, Period> duration, bool autoApply = true)
@@ -124,8 +131,9 @@ public:
 		setOverflow(overflow);
 
 		// Generate Update Event to apply the new settings for ARR
-		if (autoApply)
-			TIM{{ id }}->EGR |= TIM_EGR_UG;
+		if (autoApply) {
+			applyAndReset();
+		}
 
 		return overflow;
 	}
@@ -140,10 +148,16 @@ public:
 	}
 
 	static inline void
+	generateEvent(Event ev)
+	{
+		TIM{{ id }}->EGR = static_cast<uint32_t>(ev);
+	}
+
+	static inline void
 	applyAndReset()
 	{
 		// Generate Update Event to apply the new settings for ARR
-		TIM{{ id }}->EGR |= TIM_EGR_UG;
+		generateEvent(Event::Update);
 	}
 
 	static inline Value

@@ -39,6 +39,7 @@ def build(env):
     env.outbasepath = "modm/src/modm/platform/eth"
 
     env.copy("eth.hpp")
+    env.copy("PAL.hpp")
     env.copy("eth_impl.hpp")
     env.copy("PHYBase.hpp")
 

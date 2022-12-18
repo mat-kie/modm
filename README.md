@@ -76,14 +76,15 @@ git clone --recurse-submodules --jobs 8 https://github.com/modm-io/modm.git
 	- [CrashCatcher][]: Crash reports for HardFaults.
 	- [printf][]: Small printf implementation.
 	- [Nanopb][]: Embedded Protocol Buffers.
+	- [LVGL][]: Embedded Graphics Library.
 
 
 ## Microcontrollers
 
-modm can create a HAL for <!--allcount-->3304<!--/allcount--> devices of these vendors:
+modm can create a HAL for <!--allcount-->3534<!--/allcount--> devices of these vendors:
 
 - STMicroelectronics STM32: <!--stmcount-->2729<!--/stmcount--> devices.
-- Microchip SAM: <!--samcount-->186<!--/samcount--> devices.
+- Microchip SAM: <!--samcount-->416<!--/samcount--> devices.
 - Microchip AVR: <!--avrcount-->388<!--/avrcount--> devices.
 - Raspberry Pi: <!--rpicount-->1<!--/rpicount--> device.
 
@@ -103,7 +104,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <tr>
 <th align="center"></th>
 <th align="center" colspan="13">STM32</th>
-<th align="center" colspan="3">SAM</th>
+<th align="center" colspan="4">SAM</th>
 <th align="center" colspan="1">RP</th>
 <th align="center" colspan="3">AT</th>
 </tr><tr>
@@ -121,9 +122,10 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <th align="center">L1</th>
 <th align="center">L4</th>
 <th align="center">L5</th>
-<th align="center">D21</th>
-<th align="center">G55</th>
-<th align="center">V70</th>
+<th align="center">D1x<br/>D2x<br/>DAx</th>
+<th align="center">D5x<br/>E5x</th>
+<th align="center">E7x<br/>S7x<br/>V7x</th>
+<th align="center">G5x</th>
 <th align="center">20</th>
 <th align="center">90</th>
 <th align="center">Mega</th>
@@ -144,8 +146,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
-<td align="center">✅</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
 <td align="center">✅</td>
@@ -166,8 +169,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✕</td>
-<td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">○</td>
 <td align="center">○</td>
@@ -188,8 +192,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">○</td>
 <td align="center">○</td>
-<td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">○</td>
 <td align="center">○</td>
@@ -210,8 +215,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
-<td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">○</td>
@@ -232,8 +238,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
-<td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">✅</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
@@ -254,7 +261,8 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
-<td align="center">✕</td>
+<td align="center">○</td>
+<td align="center">○</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
@@ -276,6 +284,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
+<td align="center">○</td>
 <td align="center">○</td>
 <td align="center">○</td>
 <td align="center">✅</td>
@@ -300,12 +309,14 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">○</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
 </tr><tr>
 <td align="left">GPIO</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
@@ -344,6 +355,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">○</td>
 <td align="center">○</td>
 <td align="center">○</td>
+<td align="center">○</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
@@ -358,6 +370,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">○</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
+<td align="center">○</td>
 <td align="center">○</td>
 <td align="center">○</td>
 <td align="center">○</td>
@@ -386,8 +399,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✕</td>
-<td align="center">✕</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
@@ -408,14 +422,16 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
-<td align="center">✅</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 </tr><tr>
 <td align="left">System Clock</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
@@ -452,8 +468,9 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
-<td align="center">✅</td>
 <td align="center">○</td>
+<td align="center">○</td>
+<td align="center">✅</td>
 <td align="center">○</td>
 <td align="center">○</td>
 <td align="center">○</td>
@@ -475,7 +492,8 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
-<td align="center">○</td>
+<td align="center">✅</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✅</td>
@@ -502,6 +520,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✕</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
+<td align="center">✕</td>
 </tr><tr>
 <td align="left">USB</td>
 <td align="center">✅</td>
@@ -520,6 +539,7 @@ Please [discover modm's peripheral drivers for your specific device][discover].
 <td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">○</td>
+<td align="center">✅</td>
 <td align="center">✅</td>
 <td align="center">✕</td>
 <td align="center">✕</td>
@@ -613,11 +633,15 @@ We have out-of-box support for many development boards including documentation.
 <td align="center"><a href="https://modm.io/reference/config/modm-rp-pico">Raspberry Pi Pico</a></td>
 </tr><tr>
 <td align="center"><a href="https://modm.io/reference/config/modm-samd21-mini">SAMD21-MINI</a></td>
+<td align="center"><a href="https://modm.io/reference/config/modm-samd21-xplained-pro">SAMD21-XPLAINED-PRO</a></td>
+<td align="center"><a href="https://modm.io/reference/config/modm-same54-xplained-pro">SAME54-XPLAINED-PRO</a></td>
 <td align="center"><a href="https://modm.io/reference/config/modm-samg55-xplained-pro">SAMG55-XPLAINED-PRO</a></td>
+</tr><tr>
+<td align="center"><a href="https://modm.io/reference/config/modm-samv71-xplained-ultra">SAMV71-XPLAINED-ULTRA</a></td>
 <td align="center"><a href="https://modm.io/reference/config/modm-srxe">Smart Response XE</a></td>
 <td align="center"><a href="https://modm.io/reference/config/modm-stm32_f4ve">STM32-F4VE</a></td>
-</tr><tr>
 <td align="center"><a href="https://modm.io/reference/config/modm-stm32f030_demo">STM32F030-DEMO</a></td>
+</tr><tr>
 <td align="center"><a href="https://modm.io/reference/config/modm-thingplus-rp2040">THINGPLUS-RP2040</a></td>
 </tr>
 </table>
@@ -834,4 +858,5 @@ and [many more contributors][contributors].
 [CrashCatcher]:    https://github.com/adamgreen/CrashCatcher
 [printf]:          https://github.com/eyalroz/printf
 [Nanopb]:          https://github.com/nanopb/nanopb
+[LVGL]:            https://lvgl.io
 <!--/links-->

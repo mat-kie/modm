@@ -30,7 +30,8 @@ def prepare(module, options):
                    ":architecture:assert",
                    ":platform:gpio",
                    ":platform:rcc",
-                   ":math:utils")
+                   ":math:utils",
+                   ":processing:timer")
 
     return True
 
@@ -39,5 +40,7 @@ def build(env):
     env.outbasepath = "modm/src/modm/platform/eth"
 
     env.copy("eth.hpp")
-    env.copy("eth_impl.hpp")
+    env.copy("eth.cpp")
+    env.copy("phy_registers.hpp")
+#    env.copy("eth_impl.hpp")
 

@@ -32,6 +32,25 @@ This module implements TCP over Ethernet via the LAN8720A transceiver.
         env.outbasepath = "modm/ext/freertos_plus_tcp"
         env.copy("modm_lan8720a.cpp")
 
+class FreeRTOS_TCP_Networkinterface(Module):
+    def init(self, module):
+        module.name = "networkinterface"
+        module.description = """
+# a:FreeRTOS-Plus-TCP Ethernet Networkinterface implementation.
+"""
+    def prepare(self, module, options):
+        device = options[":target"]
+        if not device.has_driver("eth:stm32*"):
+            return False
+        if device.identifier.family not in ["f7", "f4"]:
+            return False
+        module.depends("tcp", ":communication:ethernet")
+        return True
+
+    def build(self, env):
+        env.outbasepath = "modm/ext/freertos_plus_tcp"
+        env.copy("modm_Networkinterface.cpp")
+        env.copy("modm_network_buffers.hpp")
 
 class FreeRTOS_TCP(Module):
     def init(self, module):
@@ -40,6 +59,7 @@ class FreeRTOS_TCP(Module):
 
     def prepare(self, module, options):
         module.add_submodule(FreeRTOS_TCP_LAN8720A())
+        module.add_submodule(FreeRTOS_TCP_Networkinterface())
         return True
 
     def build(self, env):

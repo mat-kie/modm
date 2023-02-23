@@ -193,6 +193,13 @@ MAIN_STACK_SIZE = {{ options[":platform:cortex-m:main_stack_size"] }};
 
 
 %% macro section_rom(memory)
+	/* build id directly after vector table */
+	.build_id :
+	{
+		__build_id = .;
+		KEEP(*(.note.gnu.build-id))
+	} >{{memory}}
+
 	/* Read-only sections in {{memory}} */
 	.text :
 	{
@@ -223,12 +230,6 @@ MAIN_STACK_SIZE = {{ options[":platform:cortex-m:main_stack_size"] }};
 		__assertion_table_end = .;
 	} >{{memory}}
 
-	.build_id :
-	{
-		__build_id = .;
-		KEEP(*(.note.gnu.build-id))
-	} >{{memory}}
-
 	/* We do not call static destructors ever */
 	/DISCARD/ :
 	{
@@ -251,6 +252,9 @@ MAIN_STACK_SIZE = {{ options[":platform:cortex-m:main_stack_size"] }};
 		*(.ARM.extab* .gnu.linkonce.armextab.*)
 		KEEP(*(.eh_frame*))
 	} >{{memory}}
+
+	/* required by libc __libc_fini_array, but never called */
+	_fini = .;
 	%% else
 	%#
 	/* C++ exception unwind tables are discarded */

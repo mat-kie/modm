@@ -21,5 +21,10 @@ def prepare(module, options):
 
 def build(env):
     env.outbasepath = "modm/src/modm/communication/ethernet"
-    env.copy(".")
-    env.copy("../ethernet.hpp")
+    env.copy("api_concepts.hpp")
+    if env[":target"].identifier["family"] in ["f7", "f4"]:
+        env.copy("../ethernet.hpp")
+    elif env[":target"].identifier["family"] in ["h7"]:
+        env.copy("../ethernet_h7.hpp", "../ethernet.hpp")
+
+

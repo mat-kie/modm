@@ -46,6 +46,11 @@
  * PHY:
  *      - implement the nucleo phy with the new logic.
  */
+/**
+ * NOTES:
+ * reset Context Descriptor in Rx Handler to normal.
+ *
+ */
 
 namespace modm::ethernet
 {
@@ -82,42 +87,42 @@ namespace modm::ethernet
         typedef etl::array<BufferHandle, RxDescriptorCount> RxBufferHandleTable_t;
         modm_aligned(32) typedef etl::array<modm::platform::eth::TxDmaDescriptor, TxDescriptorCount> TxDescriptorTable_t;
         modm_aligned(32) typedef etl::array<modm::platform::eth::RxDmaDescriptor, RxDescriptorCount> RxDescriptorTable_t;
-        static inline etl::array<MacFilter, 4> m_macFilters {};
-        static inline TxBufferHandleTable_t TxBufferHandles {};
-        static inline RxBufferHandleTable_t RxBufferHandles {};
-        static inline TxDescriptorTable_t TxDescriptorTable {};
-        static inline RxDescriptorTable_t RxDescriptorTable {};
-        static inline etl::array<notificationCB_t, TxDescriptorCount> TxCompleteCallbacks {};
-        static inline size_t TxTableCleanupIndex {};
-        static inline size_t TxTableNotifiedIndex {};
-        static inline size_t TxTableTxIndex {};
-        static inline size_t RxTableRxIndex {};
+        static inline etl::array<MacFilter, 4> m_macFilters{};
+        static inline TxBufferHandleTable_t TxBufferHandles{};
+        static inline RxBufferHandleTable_t RxBufferHandles{};
+        static inline TxDescriptorTable_t TxDescriptorTable{};
+        static inline RxDescriptorTable_t RxDescriptorTable{};
+        static inline etl::array<notificationCB_t, TxDescriptorCount> TxCompleteCallbacks{};
+        static inline size_t TxTableCleanupIndex{};
+        static inline size_t TxTableNotifiedIndex{};
+        static inline size_t TxTableTxIndex{};
+        static inline size_t RxTableRxIndex{};
 
         static void setupTxDmaDescriptor(size_t index, void *bufferAddress, size_t bufferSize)
         {
             using namespace modm::platform;
-            static constexpr eth::CrcControl_t checksumControl(eth::CrcControl::HardwareCalculated);
-            static constexpr eth::TDes0_t DefaultTDes0{eth::TDes0::FirstSegment | eth::TDes0::SecondAddressChained | eth::TDes0::InterruptOnCompletion | eth::TDes0::TransmitTimestampEnable | eth::TDes0::LastSegment | checksumControl};
-            size_t nextDescriptor = (index + 1) % TxDescriptorCount;
-            TxDescriptorTable[index].BufferSize = eth::TxBuffer1Size_t(bufferSize).value;
-            TxDescriptorTable[index].Buffer1Addr = (uint32_t)bufferAddress;
-            TxDescriptorTable[index].Buffer2NextDescAddr = (uint32_t)&TxDescriptorTable[nextDescriptor];
-            TxDescriptorTable[index].Status = DefaultTDes0.value;
+            static constexpr eth::CrcPadControl_t ethCrcControl(eth::CrcPadControl::AppendPadAndCrc);
+            static constexpr eth::IPChecksumControl_t IPchecksumControl(eth::IPChecksumControl::HardwareCalculated);
+            eth::NormalTxDmaDescriptor Descriptor{
+                .buffer1Address = (uint32_t)bufferAddress,
+                .buffer2Address = 0,
+                .controlBufferSize = eth::NormalTDes2_t(eth::NormalTDes2::InterruptOnCompletion) | eth::TxBuffer1Size_t(bufferSize),
+                .control = eth::NormalTDes3_t(eth::NormalTDes3::FirstDescriptor | eth ::NormalTDes3::LastDescriptor | eth::NormalTDes3::DmaOwned) | ethCrcControl | IPchecksumControl};
+
             if (bufferAddress != nullptr)
             {
-                TxDescriptorTable[index].Status |= uint32_t(eth::TDes0::DmaOwned);
+                TxDescriptorTable[index] = Descriptor;
             }
         }
-        static void setupRxDmaDescriptor(size_t index, void *bufferAddress, size_t bufferSize)
+        static void setupRxDmaDescriptor(size_t index, void *bufferAddress)
         {
             using namespace modm::platform;
-            static constexpr eth::RDes1_t DefaultRDes1{eth::RDes1::SecondAddressChained};
-            size_t nextDescriptor = (index + 1) % RxDescriptorCount;
-
-            RxDescriptorTable[index].ControlBufferSize = (DefaultRDes1 | eth::RxBuffer1Size_t(bufferSize)).value;
-            RxDescriptorTable[index].Buffer1Addr = (uint32_t)bufferAddress;
-            RxDescriptorTable[index].Buffer2NextDescAddr = (uint32_t)&RxDescriptorTable[nextDescriptor];
-            RxDescriptorTable[index].Status = uint32_t(eth::RDes0::DmaOwned);
+            eth::NormalRxDmaDescriptor descriptor{
+                .buffer1Address = (uint32_t)bufferAddress,
+                ._reserved{},
+                .buffer2Address = 0,
+                .control = eth::NormalRDes3_t(eth::NormalRDes3::Buffer1AddressValid | eth::NormalRDes3::EnableInterruptOnCompletition | eth::NormalRDes3::DmaOwned)};
+            RxDescriptorTable[index] = descriptor;
         }
 
     public:
@@ -184,22 +189,22 @@ namespace modm::ethernet
         {
             using namespace modm::platform;
             size_t notI = RxTableRxIndex;
-            while (eth::RDes0_t(RxDescriptorTable[notI].Status).none(eth::RDes0::DmaOwned))
+            // while (RxDescriptorTable[notI].getType() != eth::DescriptorType::Normal)
+            //{
+            notI = (notI + 1) % RxDescriptorCount;
+            for (auto &filter : m_macFilters)
             {
-                notI = (notI + 1) % RxDescriptorCount;
-                for (auto &filter : m_macFilters)
+                // if we have data and the mac matches, add to macfilters rx queue
+                // if (byteCount>0 && memcmp(filter.m_macAddress.data(), buffer.data().data(), sizeof(MacAddr_t)) == 0)
+                //{
+                if (filter.m_rxNotify != nullptr)
                 {
-                    // if we have data and the mac matches, add to macfilters rx queue
-                    // if (byteCount>0 && memcmp(filter.m_macAddress.data(), buffer.data().data(), sizeof(MacAddr_t)) == 0)
-                    //{
-                    if (filter.m_rxNotify != nullptr)
-                    {
-                        filter.m_rxNotify();
-                    }
-                    //}
-                };
-                // buffer goes out of scope decrementing the ref count.
+                    filter.m_rxNotify();
+                }
+                //}
             };
+            // buffer goes out of scope decrementing the ref count.
+            //};
         };
 
         static void initializeDmaTables()
@@ -214,7 +219,7 @@ namespace modm::ethernet
             {
                 RxBufferHandles[idx] = BufferHandle(1536);
                 auto &buffer(RxBufferHandles[idx]);
-                setupRxDmaDescriptor(idx, buffer.data().data(), buffer.size());
+                setupRxDmaDescriptor(idx, buffer.data().data());
             }
         }
 
@@ -222,35 +227,22 @@ namespace modm::ethernet
         {
 
             using namespace modm::platform;
-            eth::MacConfiguration_t macCfg{
-                eth::MacConfiguration::AutomaticPad | eth::MacConfiguration::Ipv4ChecksumOffLoad | eth::MacConfiguration::RetryDisable | eth::Speed_t(eth::Speed::Speed100M) | eth::DuplexMode_t(eth::DuplexMode::Full)};
+            eth::MacConfiguration_t macCfg{eth::MacConfiguration::FullDuplexMode | eth::MacConfiguration::FastEthernetSpeed | eth::MacConfiguration::DisableRetry | eth::MacConfiguration::AutoCrcStripping};
+            eth::TxQueueFlowControl_t macFcr{
+                eth::TxQueueFlowControl::DisableZeroQuantaPause};
 
-            eth::MacFlowControl_t macFcr{
-                eth::MacFlowControl::ZeroQuantaPauseDisable};
+            eth::MacPacketFilteringControl_t macFfr{
+                eth::MacPacketFilteringControl::HashOrPerfectFilter | eth::MacPacketFilteringControl::PassAllMulticast | eth::PassControlPacket_t(eth::PassControlPacket::BlockAll)};
 
-            eth::MacFrameFilter_t macFfr{
-                eth::MacFrameFilter::HashOrPerfect | eth::PassControlFrame_t(eth::PassControlFrame::BlockAll) | eth::MacFrameFilter::PassAllMulticast};
-
+            memcpy(m_macFilters[0].m_macAddress, cfg.macAddress, sizeof(modm::platform::eth::MacAddr_t));
+            Eth::setMacFilter(eth::MacAddressIndex::MacAddress0, cfg.macAddress);
             Eth::configureMac(macCfg, macFfr, macFcr);
 
-            Eth::setMacFilter(eth::MacAddressIndex::Index0, cfg.macAddress);
-            memcpy(m_macFilters[0].m_macAddress, cfg.macAddress, sizeof(modm::platform::eth::MacAddr_t));
-
             initializeDmaTables();
-            Eth::setDmaRxDescriptorTable(RxDescriptorTable.data());
-            Eth::setDmaTxDescriptorTable(TxDescriptorTable.data());
+            Eth::configureDma(TxDescriptorTable, RxDescriptorTable, 1536);
 
-            eth::DmaOperationMode_t dmaOmr{
-                eth::DmaOperationMode::ReceiveStoreAndForward | eth::DmaOperationMode::TransmitStoreAndForward | eth::DmaOperationMode::OperateOnSecondFrame};
-
-            eth::DmaBusMode_t dmaBmr{
-                eth::DmaBusMode::EnhancedDescFormat | eth::DmaBusMode::AddressAlignedBeats | eth::DmaBusMode::FixedBurst | eth::DmaBusMode::UseSeparatePbl | eth::BurstLength_t(eth::BurstLength::Length32Beats) | eth::RxDmaBurstLength_t(eth::BurstLength::Length32Beats)};
-
-            Eth::configureDma(dmaBmr, dmaOmr);
-            eth::DmaInterruptEnable_t interrupts{
-                eth::DmaInterruptEnable::NormalIrqSummary | eth::DmaInterruptEnable::Receive | eth::DmaInterruptEnable::Transmit};
-            Eth::enableInterrupt(eth::DmaInterruptEnable::Receive, rxIsrNotifier);
-            Eth::enableInterrupt(eth::DmaInterruptEnable::Transmit, txCompleteCallbackProcessing);
+            Eth::enableInterrupt(eth::DmaChannelInterruptEnable::RxInt, rxIsrNotifier);
+            Eth::enableInterrupt(eth::DmaChannelInterruptEnable::TxInt, txCompleteCallbackProcessing);
             Eth::start();
             return true;
         };
@@ -282,7 +274,7 @@ namespace modm::ethernet
             TxTableTxIndex = (TxTableTxIndex + 1) % TxDescriptorCount;
             // force descriptor poll by dma to make it recognize the pending transmission
             __DSB();
-            ETH->DMATPDR = 0;
+            ETH->DMACTDTPR = 0;
             return true;
         };
 
@@ -296,7 +288,7 @@ namespace modm::ethernet
             TxTableTxIndex = (TxTableTxIndex + 1) % TxDescriptorCount;
             // force descriptor poll by dma to make it recognize the pending transmission
             __DSB();
-            ETH->DMATPDR = 0;
+            ETH->DMACTDTPR = 0;
             return true;
         };
 
@@ -324,9 +316,10 @@ namespace modm::ethernet
             using namespace modm::platform;
             while (TxTableCleanupIndex != TxTableTxIndex)
             {
-                if (eth::TDes0_t(TxDescriptorTable.at(TxTableCleanupIndex).Status).none(modm::platform::eth::TDes0::DmaOwned))
+                if (TxDescriptorTable.at(TxTableCleanupIndex).getType() != eth::DescriptorType::Normal)
                 {
                     TxBufferHandles[TxTableCleanupIndex].reset();
+                    setupTxDmaDescriptor(TxTableCleanupIndex, nullptr, 0);
                     TxTableCleanupIndex = (TxTableCleanupIndex + 1) % TxDescriptorCount;
                 }
                 else
@@ -341,41 +334,64 @@ namespace modm::ethernet
         static void processReceivedFrames()
         {
             using namespace modm::platform;
-            while (eth::RDes0_t(RxDescriptorTable[RxTableRxIndex].Status).none(eth::RDes0::DmaOwned))
+            eth::DescriptorType type{};
+            do
             {
-                // store copy of buffer (increase ref count)
-                BufferHandle buffer(std::move(RxBufferHandles[RxTableRxIndex]));
+                type = RxDescriptorTable[RxTableRxIndex].getType();
 
-                buffer.resize(eth::RxFrameLength_t::get(eth::RDes0_t(RxDescriptorTable[RxTableRxIndex].Status)));
-                // assign new buffer
-                RxBufferHandles[RxTableRxIndex] = BufferHandle(1536);
-                setupRxDmaDescriptor(RxTableRxIndex, RxBufferHandles[RxTableRxIndex].data().data(), 1536);
-                // increment index wrap around when end is reached
-                RxTableRxIndex = (RxTableRxIndex + 1) % RxDescriptorCount;
-                static constexpr eth::MacAddr_t bcMac{0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-                if (buffer.hasData() && m_macFilters[0].inUse && memcmp(bcMac, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
+                switch (type)
                 {
-                    m_macFilters[0].m_rxHandles.emplace(std::move(buffer));
+                case eth::DescriptorType::Writeback:
+                {
+                    // move bufferhandle of this index to corresponding queue, assign new and reform normal descriptor
+                    // store copy of buffer (increase ref count)
+                    const eth::WritebackRxDmaDescriptor &desc(RxDescriptorTable[RxTableRxIndex].asWriteback());
+                    BufferHandle buffer(std::move(RxBufferHandles[RxTableRxIndex]));
+                    buffer.resize(desc.getSize());
+                    RxBufferHandles[RxTableRxIndex] = BufferHandle(1536);
+                    setupRxDmaDescriptor(RxTableRxIndex, RxBufferHandles[RxTableRxIndex].data().data());
+
+                    static constexpr eth::MacAddr_t bcMac{0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+                    if (buffer.hasData() && m_macFilters[0].inUse && memcmp(bcMac, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
+                    {
+                        m_macFilters[0].m_rxHandles.emplace(std::move(buffer));
+                    }
+                    else
+                    {
+
+                        for (MacFilter &filter : m_macFilters)
+                        {
+                            // if we have data and the mac matches, add to macfilters rx queue
+                            if (buffer.hasData() && memcmp(filter.m_macAddress, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
+                            {
+                                if (filter.inUse)
+                                {
+                                    filter.m_rxHandles.emplace(std::move(buffer));
+                                }
+                            }
+                        };
+                    }
+                }
+                break;
+                case eth::DescriptorType::Context:
+                    /** extract context info for prev. descriptor, reset with the old handle of this index*/
+                    /// TODO: store context
+                    setupRxDmaDescriptor(RxTableRxIndex, RxBufferHandles[RxTableRxIndex].data().data());
+                    // reset the descriptor to be a normal one
+
+                    break;
+                case eth::DescriptorType::Normal:
+                    // no more data to process
                     return;
+                default:
+                    setupRxDmaDescriptor(RxTableRxIndex, RxBufferHandles[RxTableRxIndex].data().data());
+                    break;
                 }
 
-                for (MacFilter &filter : m_macFilters)
-                {
-                    // if we have data and the mac matches, add to macfilters rx queue
-                    if (buffer.hasData() && memcmp(filter.m_macAddress, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
-                    {
-                        if (filter.inUse)
-                        {
-                            filter.m_rxHandles.emplace(std::move(buffer));
-                            return;
-                        }
-                    }
-                };
-                // buffer goes out of scope decrementing the ref count.
-            };
+                RxTableRxIndex = (RxTableRxIndex + 1) % RxDescriptorCount;
+            } while (type != eth::DescriptorType::Normal);
         }
     };
 
 } // namespace modm::communication
-
 #endif

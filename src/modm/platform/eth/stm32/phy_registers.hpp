@@ -67,6 +67,20 @@ struct PHY
 		SPD100T4 = Bit15     /// 100BASE-T4 capable
 	};
 	MODM_FLAGS16(SR);
+
+	template<typename T>
+	static consteval uint8_t getRegisterNumber(){
+		if constexpr (std::is_same_v<T, PHY::CR_t>)
+		{
+			return uint8_t(Register::CR);
+		}
+		else if constexpr (std::is_same_v<T, PHY::SR_t>)
+		{
+			return uint8_t(Register::SR);
+		}else{
+			static_assert(std::is_same_v<T, PHY::CR_t>);
+		}
+	}
 };
 };  // namespace modm::drivers
 

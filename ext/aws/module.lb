@@ -42,7 +42,7 @@ class FreeRTOS_TCP_Networkinterface(Module):
         device = options[":target"]
         if not device.has_driver("eth:stm32*"):
             return False
-        if device.identifier.family not in ["f7", "f4"]:
+        if device.identifier.family not in ["f7", "f4", "h7"]:
             return False
         module.depends("tcp", ":communication:ethernet")
         return True

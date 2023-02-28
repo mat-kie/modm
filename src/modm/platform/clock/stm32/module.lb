@@ -155,6 +155,8 @@ def build(env):
             nper = "DSI"
         if "Eth" in all_peripherals and per == "ETHMAC":
             per = "Eth"
+        if "Eth" in all_peripherals and per == "ETH1MAC":
+            per="Eth"
         # Fix USBOTG OTG
         if "Usbotgfs" in all_peripherals and per.startswith("OTG"):
             if per == "OTGH": per = "OTGHS";

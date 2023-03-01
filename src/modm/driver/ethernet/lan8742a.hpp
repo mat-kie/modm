@@ -1,14 +1,15 @@
 #ifndef LAN8742A_DRIVER_HPP
 #define LAN8742A_DRIVER_HPP
 
-#include <modm/platform/eth/phy_registers.hpp>
 #include <modm/processing/timer.hpp>
 #include <modm/platform.hpp>
+#include <modm/platform/eth/phy_registers.hpp>
+#include <modm/platform/eth/api_concepts.hpp>
 
 namespace modm::driver
 {
 
-    class Lan8742a
+    class Lan8742a : public modm::platform::PHYBase
     {
         static inline modm::ethernet::api::LinkStatus MyLinkStatus{};
 
@@ -22,13 +23,13 @@ namespace modm::driver
         {
             using namespace modm::platform;
 
-            PHY::SR_t statusRegister;
-            PHY::CR_t controlRegister;
+            StatusRegister_t statusRegister;
+            ControlRegister_t controlRegister;
 
             // enable auto-negotiation
-            Eth::readPhyRegister<Lan8742a>(controlRegister);
-            controlRegister |= PHY::CR::RAN;
-            if (not Eth::writePhyRegister<Lan8742a>(controlRegister))
+            Eth::readPhyRegister<Lan8742a>(Register::CR, controlRegister);
+            controlRegister |= ControlRegister::AN_Restart;
+            if (not Eth::writePhyRegister<Lan8742a>(Register::CR, controlRegister))
                 return {};
 
             // wait for auto-negotiation complete (5s)
@@ -36,8 +37,8 @@ namespace modm::driver
             while (not timeout.isExpired())
             {
 
-                (void)Eth::readPhyRegister<Lan8742a>(statusRegister);
-                if (statusRegister.any(PHY::SR::AN_COMP))
+                (void)Eth::readPhyRegister<Lan8742a>(Register::SR, statusRegister);
+                if (statusRegister.any(StatusRegister::AN_Complete))
                 {
                     return readLinkStatus();
                 }
@@ -48,17 +49,28 @@ namespace modm::driver
         {
             using namespace modm::platform;
 
-            PHY::SR_t statusRegister;
-            if (not Eth::readPhyRegister<Lan8742a>(statusRegister))
+            StatusRegister_t statusRegister;
+            if (not Eth::readPhyRegister<Lan8742a>(Register::SR, statusRegister))
                 return {};
 
-            if (!statusRegister.any(PHY::SR::LINK_STATUS))
+            if (!statusRegister.any(StatusRegister::LinkStatus))
             {
                 return {};
             }
             MyLinkStatus = modm::ethernet::api::LinkStatus{
-                .mode = statusRegister.any(PHY::SR::SPD100T2FD | PHY::SR::SPD100XFD | PHY::SR::SPD10FD) ? modm::ethernet::api::LinkStatus::DuplexMode::Full : modm::ethernet::api::LinkStatus::DuplexMode::Half,
-                .speed = statusRegister.any(PHY::SR::SPD100T2FD | PHY::SR::SPD100T2HD | PHY::SR::SPD100T4 | PHY::SR::SPD100XFD | PHY::SR::SPD100XHD) ? modm::ethernet::api::LinkStatus::Speed::S100MBit : modm::ethernet::api::LinkStatus::Speed::S10MBit};
+                .mode = statusRegister.any(
+                    StatusRegister::SPD100T2FD
+                    | StatusRegister::SPD100XFD
+                    | StatusRegister::SPD10FD
+                ) ? modm::ethernet::api::LinkStatus::DuplexMode::Full : modm::ethernet::api::LinkStatus::DuplexMode::Half,
+                .speed = statusRegister.any(
+                    StatusRegister::SPD100T2FD
+                    | StatusRegister::SPD100T2HD
+                    | StatusRegister::SPD100T4
+                    | StatusRegister::SPD100XFD
+                    | StatusRegister::SPD100XHD
+                ) ? modm::ethernet::api::LinkStatus::Speed::S100MBit : modm::ethernet::api::LinkStatus::Speed::S10MBit
+            };
             return MyLinkStatus;
         }
         static modm::ethernet::api::LinkStatus getLinkStatus()

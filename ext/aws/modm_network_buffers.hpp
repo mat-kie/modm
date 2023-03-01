@@ -11,7 +11,7 @@
 
 namespace modm::ext::tcp
 {
-    /// @brief BufferHan
+    /// @brief Unique pointer like handle for a network buffer descriptor structure
     class BufferHandle
     {
     public:
@@ -26,10 +26,16 @@ namespace modm::ext::tcp
         BufferHandle(const BufferHandle &) = delete;
         BufferHandle &operator=(const BufferHandle &) = delete;
 
+        /// @brief get the Address of the buffer for the dma
+        /// @param ptr ptr to the descriptor object which is managed by this Handle class
+        /// @return
         static uint8_t *getPayloadAddress(pointer_type ptr)
         {
             return ptr ? ptr->pucEthernetBuffer : nullptr;
         }
+        /// @brief get the payload size of the buffer in bytes
+        /// @param ptr ptr to the descriptor object which is managed by this Handle class
+        /// @return
         static size_t getPayloadSizeBytes(pointer_type ptr)
         {
             return ptr ? ptr->xDataLength : 0;
@@ -39,6 +45,7 @@ namespace modm::ext::tcp
         explicit BufferHandle(size_t size) : m_data(pxGetNetworkBufferWithDescriptor(size, 0)){
 
                                              };
+
 
         BufferHandle(BufferHandle &&rhs) : m_data(rhs.m_data)
         {
@@ -57,6 +64,7 @@ namespace modm::ext::tcp
             rhs.m_data = nullptr;
             return *this;
         };
+
 
         pointer_type detach()
         {

@@ -16,41 +16,6 @@
 #include <etl/array.h>
 #include <etl/queue.h>
 
-/**
- * NOTES:
- *  Implement Mac Filter
- * Ethernet If has MacFilters
- * MacFilters can have exactly one Handle or no Handle
- * A MacFilter can have one notification CB
- * Mac Filter has a fifo of pointers to RxDMA descriptors to empty
- * RX:
- *      RxDescriptor -(BufferHandle)-> MacFilter -(BufferHandle)-> MacFilterHandle.getRxFrame()
- *      - Rx Interrupt triggered
- *      - check dest. address against MacFilters
- *      - push reveived Descriptor references to Mac Filter FIFO
- *      - notify subscribers from ISR
- *      - subscriber retrieves Frames from FIFO (he has to!)
- *      - on getRXFrame we move the RxDescriptors BufferHandle out, assign a New one, reset DMAOwned and move-return the old one we moved out.
- *      - hasRxFrames queries the FIFO of the MacFIlter
- *
- * LINKSTATUS:
- *      - isConnected gets polled periodically by the NetworkInterface to determine LinkStatus
- *      - eNetwork Events get triggered from there accordingly
- *      - other users can just poll the EthernetTransport
- * TODO: add a notification Callback registry for link status changes to PHY / EthernetTransport
- *
- * HAL:
- *      - remove the Phy/LinkStatus specific functions
- *          - replace them with the configureMac(DuplexMode, Speed)
- *      - fix the ReadPhyRegister ans write... functions
- * PHY:
- *      - implement the nucleo phy with the new logic.
- */
-/**
- * NOTES:
- * reset Context Descriptor in Rx Handler to normal.
- *
- */
 
 namespace modm::ethernet
 {
@@ -58,7 +23,6 @@ namespace modm::ethernet
     struct Configuration
     {
         modm::platform::eth::MacAddr_t macAddress;
-        // mac address
         // filtering
         // hardware offloading
     };
@@ -79,12 +43,11 @@ namespace modm::ethernet
             modm::platform::eth::MacAddr_t m_macAddress{};
             etl::queue<BufferHandle, RxDescriptorCount> m_rxHandles{};
             bool inUse{false};
-            // enqueue a copy of the handle if the dest mac matches
-            // execute notification if set.
         };
 
         typedef etl::array<BufferHandle, TxDescriptorCount> TxBufferHandleTable_t;
         typedef etl::array<BufferHandle, RxDescriptorCount> RxBufferHandleTable_t;
+
         modm_aligned(32) typedef etl::array<modm::platform::eth::TxDmaDescriptor, TxDescriptorCount> TxDescriptorTable_t;
         modm_aligned(32) typedef etl::array<modm::platform::eth::RxDmaDescriptor, RxDescriptorCount> RxDescriptorTable_t;
         static inline etl::array<MacFilter, 4> m_macFilters{};
@@ -147,8 +110,7 @@ namespace modm::ethernet
                 processReceivedFrames();
                 if (m_filter == nullptr)
                     return false;
-                bool hasD = m_filter->m_rxHandles.size() > 0;
-                return hasD;
+                return m_filter->m_rxHandles.size() > 0;
             };
             /**
              * @brief get the next RX Framebuffer handle
@@ -160,6 +122,7 @@ namespace modm::ethernet
                 if (not hasRXFrame())
                     return {};
 
+                // move the buffer out of the queue
                 BufferHandle buffer(std::move(m_filter->m_rxHandles.front()));
                 m_filter->m_rxHandles.pop();
                 return buffer;
@@ -189,22 +152,16 @@ namespace modm::ethernet
         {
             using namespace modm::platform;
             size_t notI = RxTableRxIndex;
-            // while (RxDescriptorTable[notI].getType() != eth::DescriptorType::Normal)
-            //{
             notI = (notI + 1) % RxDescriptorCount;
+
+            // execute the notification callbacks for all mac filters (from ISR!)
             for (auto &filter : m_macFilters)
             {
-                // if we have data and the mac matches, add to macfilters rx queue
-                // if (byteCount>0 && memcmp(filter.m_macAddress.data(), buffer.data().data(), sizeof(MacAddr_t)) == 0)
-                //{
                 if (filter.m_rxNotify != nullptr)
                 {
                     filter.m_rxNotify();
                 }
-                //}
             };
-            // buffer goes out of scope decrementing the ref count.
-            //};
         };
 
         static void initializeDmaTables()
@@ -223,22 +180,29 @@ namespace modm::ethernet
             }
         }
 
+        /// @brief Initialize the Transport Layer
+        /// @param cfg
+        /// @return true if successful
         static bool initialize(const Configuration &cfg)
         {
-
+            /// TODO: perofrm hardware specific initialization according to generalised Configuration from cfg
             using namespace modm::platform;
-            eth::MacConfiguration_t macCfg{eth::MacConfiguration::FullDuplexMode | eth::MacConfiguration::FastEthernetSpeed | eth::MacConfiguration::DisableRetry | eth::MacConfiguration::AutoCrcStripping};
+            eth::MacConfiguration_t macCfg{
+                eth::MacConfiguration::FullDuplexMode | eth::MacConfiguration::FastEthernetSpeed | eth::MacConfiguration::DisableRetry | eth::MacConfiguration::AutoCrcStripping};
+
             eth::TxQueueFlowControl_t macFcr{
                 eth::TxQueueFlowControl::DisableZeroQuantaPause};
 
             eth::MacPacketFilteringControl_t macFfr{
                 eth::MacPacketFilteringControl::HashOrPerfectFilter | eth::MacPacketFilteringControl::PassAllMulticast | eth::PassControlPacket_t(eth::PassControlPacket::BlockAll)};
-
+            // the devices Source address has to reside inside Macfilter 1
             memcpy(m_macFilters[0].m_macAddress, cfg.macAddress, sizeof(modm::platform::eth::MacAddr_t));
             Eth::setMacFilter(eth::MacAddressIndex::MacAddress0, cfg.macAddress);
+
             Eth::configureMac(macCfg, macFfr, macFcr);
 
             initializeDmaTables();
+
             Eth::configureDma(TxDescriptorTable, RxDescriptorTable, 1536);
 
             Eth::enableInterrupt(eth::DmaChannelInterruptEnable::RxInt, rxIsrNotifier);
@@ -248,28 +212,31 @@ namespace modm::ethernet
         };
 
         /// @brief subscribe to incoming ethernet frames with the devices source Mac addr.
-        /// @param callback that notifies the subscribing component of the inbound packet
+        /// @param callback that notifies the subscribing component of the inbound packet THIS IS EXECUTED IN ISR CONTEXT!!!
         /// @return the handle to the MacFilter for the default address
-        static MacFilterHandle subscribe(notificationCB_t callback = nullptr)
+        ///
+        /// there should be only 1 Filter for 1 Mac address. Broadcast Frames go to the source Address MAc filter
+        static MacFilterHandle subscribe(notificationCB_t ISRcallback = nullptr)
         {
-            m_macFilters[0].m_rxNotify = callback;
+            m_macFilters[0].m_rxNotify = ISRcallback;
             return MacFilterHandle(&m_macFilters[0]);
         };
 
         /// @brief subscribe to incoming ethernet frames with the specified source Mac addr.
-        /// @param callback that notifies the subscribing component of the inbound packet
-        /// @return the handle to the MacFilter for the subscribed mac/ multicast/broadcast
-        static MacFilterHandle subscribeToMacAddress(modm::platform::eth::MacAddr_t mac, notificationCB_t callback = nullptr);
+        /// @param callback that notifies the subscribing component of the inbound packet THIS IS EXECUTED IN ISR CONTEXT!!!
+        /// @return the handle to the MacFilter for the subscribed mac / multicast
+        static MacFilterHandle subscribeToMacAddress(modm::platform::eth::MacAddr_t mac, notificationCB_t ISRcallback = nullptr);
 
         /// @brief transmit a Ethernet frame. you are responsible for the header!
         /// @param buffer the buffer containing the frame to transmit
-        /// @param callback notification executed on the transmit complete interrupt.
+        /// @param callback notification executed on the transmit complete interrupt. THIS IS EXECUTED IN ISR CONTEXT!!!
         /// @return
-        static bool transmitFrame(BufferHandle &&buffer, notificationCB_t callback = nullptr)
+        static bool transmitFrame(BufferHandle &&buffer, notificationCB_t ISRcallback = nullptr)
         {
             using namespace modm::platform;
-            TxCompleteCallbacks[TxTableTxIndex] = callback;
+            TxCompleteCallbacks[TxTableTxIndex] = ISRcallback;
             setupTxDmaDescriptor(TxTableTxIndex, buffer.data().data(), buffer.size());
+            /// store the Handle to exend the livetime
             TxBufferHandles[TxTableTxIndex] = std::move(buffer);
             TxTableTxIndex = (TxTableTxIndex + 1) % TxDescriptorCount;
             // force descriptor poll by dma to make it recognize the pending transmission
@@ -278,6 +245,10 @@ namespace modm::ethernet
             return true;
         };
 
+        /// @brief Transmit a unmanaged frame pointer
+        /// @param buffer
+        /// @param callback
+        /// @return
         static bool transmitFrameUnsafe(BufferHandle::pointer_type buffer, notificationCB_t callback = nullptr)
         {
 
@@ -298,6 +269,7 @@ namespace modm::ethernet
         static TxStatus getTransmitStatus(const BufferHandle &buffer);
         static TxStatus getTransmitStatus(const BufferHandle::pointer_type buffer);
 
+        /// @brief execute the pending tx callbacks
         static void txCompleteCallbackProcessing()
         {
             while (TxTableNotifiedIndex != TxTableTxIndex)
@@ -310,7 +282,7 @@ namespace modm::ethernet
             }
         }
 
-        /// @brief reset the BufferHandles for all finished transmissions might free the buffer.
+        /// @brief reset the BufferHandles for all finished transmissions. might free the buffer.
         static void clearFinishedTransmissions()
         {
             using namespace modm::platform;
@@ -358,13 +330,12 @@ namespace modm::ethernet
                     }
                     else
                     {
-
                         for (MacFilter &filter : m_macFilters)
                         {
-                            // if we have data and the mac matches, add to macfilters rx queue
-                            if (buffer.hasData() && memcmp(filter.m_macAddress, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
+                            if (filter.inUse)
                             {
-                                if (filter.inUse)
+                                // if we have data and the mac matches, add to macfilters rx queue
+                                if (buffer.hasData() && memcmp(filter.m_macAddress, buffer.data().data(), sizeof(eth::MacAddr_t)) == 0)
                                 {
                                     filter.m_rxHandles.emplace(std::move(buffer));
                                 }

@@ -692,10 +692,10 @@ namespace modm
 
 			struct TxDmaDescriptor
 			{
-				uint32_t word0;
-				uint32_t word1;
-				uint32_t word2;
-				uint32_t word3;
+				volatile uint32_t word0;
+				volatile uint32_t word1;
+				volatile uint32_t word2;
+				volatile uint32_t word3;
 				DescriptorType getType()
 				{
 					if (word3 & Bit31)
@@ -740,10 +740,10 @@ namespace modm
 
 			struct RxDmaDescriptor
 			{
-				uint32_t word0;
-				uint32_t word1;
-				uint32_t word2;
-				uint32_t word3;
+				volatile uint32_t word0;
+				volatile uint32_t word1;
+				volatile uint32_t word2;
+				volatile uint32_t word3;
 				DescriptorType getType()
 				{
 					if (word3 & Bit31)
@@ -754,13 +754,13 @@ namespace modm
 					}
 					else
 					{
-						if ((word3 & Bit30) != 0)
+						if ((word3 & Bit30) == 0)
 						{
-							return DescriptorType::Context;
+							return DescriptorType::Writeback;
 						}
 						else
 						{
-							return DescriptorType::Writeback;
+							return DescriptorType::Context;
 						}
 					}
 				};
@@ -793,9 +793,6 @@ namespace modm
 		};
 
 		/// @ingroup modm_platform_eth
-		/// TODO:
-		///   - setting/resetting mac adresses in dest. address filter
-		///   - setting/resetting mac adresses in dest. address filter
 		class Eth : public eth
 		{
 
@@ -1068,15 +1065,15 @@ namespace modm
 
 			template <class PHYUser, class RegisterType>
 			static bool
-			writePhyRegister(RegisterType value)
+			writePhyRegister(PHYBase::Register register_address, RegisterType value)
 			{
-				return transferPhyRegister(PHYUser::Address, PHYUser::WriteTimeout, PHY::getRegisterNumber<RegisterType>(), value.value, true);
+				return transferPhyRegister(PHYUser::Address, PHYUser::WriteTimeout, uint8_t(register_address), value.value, true);
 			}
 			template <class PHYUser, class RegisterType>
 			static bool
-			readPhyRegister(RegisterType& value)
+			readPhyRegister(PHYBase::Register register_address, RegisterType& value)
 			{
-				return transferPhyRegister(PHYUser::Address, PHYUser::ReadTimeout, PHY::getRegisterNumber<RegisterType>(), value.value, false);
+				return transferPhyRegister(PHYUser::Address, PHYUser::ReadTimeout, uint8_t(register_address), value.value, false);
 			};
 
 		private:
@@ -1086,10 +1083,12 @@ namespace modm
 				// get only CR bits from MACMIIAR
 				static constexpr uint32_t readKeepMask = MdcClockDivider_t::mask().value;
 				MdioAddress_t mdioar(ETH->MACMDIOAR & readKeepMask);
-				mdioar.set(MdioPhysicalAddress_t(phyAddress));
-				mdioar.set(MdioRegDeviceAddress_t(registerAddress));
-				mdioar.set(MdioOpCode_t(isWrite ? MdioOpCode::Write : MdioOpCode::Read));
-				mdioar.set(MdioAddress::MiiBusy);
+				mdioar.set(
+					MdioPhysicalAddress_t(phyAddress)
+					| MdioRegDeviceAddress_t(registerAddress)
+					| MdioOpCode_t(isWrite ? MdioOpCode::Write : MdioOpCode::Read)
+					| MdioAddress::MiiBusy
+				);
 				ETH->MACMDIODR = regValue;
 				writeSafe(mdioar);
 				modm::Timeout timeoutTimer(timeout);
@@ -1098,7 +1097,6 @@ namespace modm
 					if (MdioAddress_t(ETH->MACMDIOAR).none(MdioAddress::MiiBusy))
 					{
 						// busy flag cleared, read data
-
 						regValue = ETH->MACMDIODR;
 						return true;
 					}

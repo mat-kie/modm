@@ -48,5 +48,3 @@ def build(env):
         env.copy("eth_h7.cpp", "eth.cpp")
     env.copy("phy_registers.hpp")
 
-#    env.copy("eth_impl.hpp")
-

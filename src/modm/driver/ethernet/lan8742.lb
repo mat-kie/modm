@@ -19,9 +19,9 @@ low-power 10BASE-T/100BASE-TX transceiver connected via an RMII interface.
 """
 
 def prepare(module, options):
+    module.depends(":platform:eth")
     return True
 
 def build(env):
     env.outbasepath = "modm/src/modm/driver/ethernet"
     env.copy("lan8742a.hpp")
-    env.copy("phy_registers.hpp")

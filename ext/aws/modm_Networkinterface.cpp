@@ -4,9 +4,9 @@
 #include <user_network_config.hpp>
 #else
 #error "you have to provide a user_network_config.hpp providing the Phy, Transport and BufferHandle"
-// using BufferHandle = modm::ext::tcp::BufferHandle;
-// using EthernetPhy = modm::driver::NullPHY<modm::ethernet::api::LinkStatus::DuplexMode::Full, modm::ethernet::api::LinkStatus::Speed::S100MBit>;
-// using Transport = modm::ethernet::EthernetTransport<BufferHandle, 4, 4, 4, EthernetPhy>;
+ using BufferHandle = modm::ext::tcp::BufferHandle;
+ using EthernetPhy = modm::driver::NullPHY<modm::ethernet::api::LinkStatus::DuplexMode::Full, modm::ethernet::api::LinkStatus::Speed::S100MBit>;
+ using Transport = modm::ethernet::EthernetTransport<BufferHandle, 16, 16, 4, EthernetPhy>;
 #endif
 
 #include <modm/processing/rtos.hpp>
@@ -33,7 +33,7 @@ static const constexpr uint8_t LLMNR_MACAddress[] = {0x01, 0x00, 0x5E, 0x00, 0x0
 
 class EMACThread : public modm::rtos::Thread
 {
-    static TaskHandle_t EMACHandle;
+    static inline TaskHandle_t EMACHandle;
     enum ThreadEvents
     {
         TxComplete = 1,
@@ -72,7 +72,6 @@ public:
     };
     // static void ErrorCB();
 
-
     void run()
     {
         if (EMACHandle == nullptr)
@@ -86,9 +85,11 @@ public:
         while (true)
         {
             uint32_t notificationValue{0};
+            // wait for a Notification for some time and query link status if nothing happened
             if (xTaskNotifyWait(0x00, ULONG_MAX, &notificationValue, pdMS_TO_TICKS(500)) != pdTRUE)
             {
-                auto linkStatus =m_linkUp ?  EthernetPhy::readLinkStatus(): EthernetPhy::startAutonegotiation();
+                auto linkStatus = m_linkUp ?  EthernetPhy::readLinkStatus(): EthernetPhy::startAutonegotiation();
+                // if the link status is not determined -> Network down
                 if (m_linkUp && (linkStatus.mode == api::LinkStatus::DuplexMode::None || linkStatus.speed == api::LinkStatus::Speed::None))
                 {
                     FreeRTOS_NetworkDown();
@@ -102,14 +103,15 @@ public:
 
             if (notificationValue & TxComplete)
             {
-                // the transmission has finished
+                // the transmission has finished, clear them from outside the ISR
                 Transport::clearFinishedTransmissions();
             }
             if (notificationValue & RxComplete)
             {
-                // we received a new Frame send to ip task
+                // There was an Rx event, check if we have a packet
                 if (OwnMacHandle.hasRXFrame())
                 {
+                    // detach the rx Frames FreeRtos network buffer descriptor from the handle
                     NetworkBufferDescriptor_t* buf = OwnMacHandle.getRXFrame().detach();
                     IPStackEvent_t rxEvent{
                         .eEventType = eNetworkRxEvent,
@@ -134,7 +136,8 @@ public:
         }
     }
 };
-TaskHandle_t EMACThread::EMACHandle{nullptr};
+
+//TaskHandle_t EMACThread::EMACHandle{nullptr};
 EMACThread prvEMACHandler;
 
 extern "C" BaseType_t xNetworkInterfaceInitialise(void)
@@ -175,10 +178,14 @@ extern "C" BaseType_t xNetworkInterfaceOutput(
 
     if (xReleaseAfterSend == pdTRUE)
     {
+        // the Descriptor should be released when no longer used by the Transport
+        // so we attach it to a handle which will free it on reset
         Transport::transmitFrame(BufferHandle(pxDescriptor), EMACThread::NotifyTxCompleteEvent);
         return pdTRUE;
     }
     else{
+        // the Network Buffer Descriptor shall not be managed by the Transport
+        // so we provide the raw descriptor
         Transport::transmitFrameUnsafe(pxDescriptor, EMACThread::NotifyTxCompleteEvent);
         return pdTRUE;
     }
